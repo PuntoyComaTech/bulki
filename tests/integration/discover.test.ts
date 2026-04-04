@@ -1,7 +1,7 @@
-import { describe, it, expect, afterEach } from 'vitest'
-import path from 'node:path'
 import fs from 'node:fs/promises'
 import os from 'node:os'
+import path from 'node:path'
+import { afterEach, describe, expect, it } from 'vitest'
 import { discoverFiles } from '../../src/pipeline/discover.js'
 
 const FIXTURES = path.resolve(import.meta.dirname, '../fixtures')
@@ -29,7 +29,9 @@ describe('discoverFiles', () => {
 
 	it('includes files from nested subdirectories', async () => {
 		const files = await collectAsync(discoverFiles(FIXTURES))
-		const hasNested = files.some((f) => f.includes('nested/nested.jpg') || f.includes('nested\\nested.jpg'))
+		const hasNested = files.some(
+			(f) => f.includes('nested/nested.jpg') || f.includes('nested\\nested.jpg'),
+		)
 		expect(hasNested).toBe(true)
 	})
 
@@ -42,7 +44,9 @@ describe('discoverFiles', () => {
 
 	it('excludes files inside directories matching an exclude pattern', async () => {
 		const files = await collectAsync(discoverFiles(FIXTURES, ['nested']))
-		const hasNested = files.some((f) => f.includes('nested/nested.jpg') || f.includes('nested\\nested.jpg'))
+		const hasNested = files.some(
+			(f) => f.includes('nested/nested.jpg') || f.includes('nested\\nested.jpg'),
+		)
 		expect(hasNested).toBe(false)
 	})
 

@@ -1,6 +1,5 @@
-import { describe, it, expect } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import { validateOptions } from '../../src/validation/options.js'
-import type { CompressOptions } from '../../src/types/index.js'
 
 describe('validateOptions', () => {
 	describe('default values', () => {
@@ -104,29 +103,23 @@ describe('validateOptions', () => {
 
 	describe('invalid quality', () => {
 		it('throws a descriptive error (not "Not implemented") when quality is 0', () => {
-			expect(() => validateOptions({ quality: 0 })).toThrowError(
-				/quality/i,
-			)
+			expect(() => validateOptions({ quality: 0 })).toThrowError(/quality/i)
 		})
 
 		it('throws a descriptive error (not "Not implemented") when quality is 101', () => {
-			expect(() => validateOptions({ quality: 101 })).toThrowError(
-				/quality/i,
-			)
+			expect(() => validateOptions({ quality: 101 })).toThrowError(/quality/i)
 		})
 
 		it('throws a descriptive error (not "Not implemented") when quality is not a number', () => {
-			expect(() =>
-				validateOptions({ quality: 'high' as unknown as number }),
-			).toThrowError(/quality/i)
+			expect(() => validateOptions({ quality: 'high' as unknown as number })).toThrowError(
+				/quality/i,
+			)
 		})
 	})
 
 	describe('invalid format', () => {
 		it('throws a descriptive error (not "Not implemented") when format is "bmp"', () => {
-			expect(() => validateOptions({ format: 'bmp' })).toThrowError(
-				/format/i,
-			)
+			expect(() => validateOptions({ format: 'bmp' })).toThrowError(/format/i)
 		})
 	})
 
@@ -136,29 +129,21 @@ describe('validateOptions', () => {
 		})
 
 		it('throws a descriptive error (not "Not implemented") when resize is negative', () => {
-			expect(() => validateOptions({ resize: -100 })).toThrowError(
-				/resize/i,
-			)
+			expect(() => validateOptions({ resize: -100 })).toThrowError(/resize/i)
 		})
 
 		it('throws a descriptive error (not "Not implemented") when resize is 1.5', () => {
-			expect(() => validateOptions({ resize: 1.5 })).toThrowError(
-				/resize/i,
-			)
+			expect(() => validateOptions({ resize: 1.5 })).toThrowError(/resize/i)
 		})
 	})
 
 	describe('invalid concurrency', () => {
 		it('throws a descriptive error (not "Not implemented") when concurrency is 0', () => {
-			expect(() => validateOptions({ concurrency: 0 })).toThrowError(
-				/concurrency/i,
-			)
+			expect(() => validateOptions({ concurrency: 0 })).toThrowError(/concurrency/i)
 		})
 
 		it('throws a descriptive error (not "Not implemented") when concurrency is 33', () => {
-			expect(() => validateOptions({ concurrency: 33 })).toThrowError(
-				/concurrency/i,
-			)
+			expect(() => validateOptions({ concurrency: 33 })).toThrowError(/concurrency/i)
 		})
 	})
 })

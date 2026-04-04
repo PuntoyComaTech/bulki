@@ -1,8 +1,8 @@
-import { describe, it, expect, afterEach } from 'vitest'
-import path from 'node:path'
 import fs from 'node:fs/promises'
 import os from 'node:os'
+import path from 'node:path'
 import sharp from 'sharp'
+import { afterEach, describe, expect, it } from 'vitest'
 import { optimizeImage } from '../../src/pipeline/optimize.js'
 
 const FIXTURES = path.resolve(import.meta.dirname, '../fixtures')
@@ -50,7 +50,10 @@ describe('optimizeImage', () => {
 		expect(result.format).toBeTruthy()
 		expect(result.duration).toBeGreaterThan(0)
 
-		const exists = await fs.stat(result.outputPath).then(() => true).catch(() => false)
+		const exists = await fs
+			.stat(result.outputPath)
+			.then(() => true)
+			.catch(() => false)
 		expect(exists).toBe(true)
 	})
 
@@ -60,7 +63,10 @@ describe('optimizeImage', () => {
 
 		const result = await optimizeImage(filePath, baseOptions(destination, 'png'))
 
-		const exists = await fs.stat(result.outputPath).then(() => true).catch(() => false)
+		const exists = await fs
+			.stat(result.outputPath)
+			.then(() => true)
+			.catch(() => false)
 		expect(exists).toBe(true)
 	})
 
@@ -70,7 +76,10 @@ describe('optimizeImage', () => {
 
 		const result = await optimizeImage(filePath, baseOptions(destination, 'webp'))
 
-		const exists = await fs.stat(result.outputPath).then(() => true).catch(() => false)
+		const exists = await fs
+			.stat(result.outputPath)
+			.then(() => true)
+			.catch(() => false)
 		expect(exists).toBe(true)
 	})
 
@@ -80,7 +89,10 @@ describe('optimizeImage', () => {
 
 		const result = await optimizeImage(filePath, baseOptions(destination, 'gif'))
 
-		const exists = await fs.stat(result.outputPath).then(() => true).catch(() => false)
+		const exists = await fs
+			.stat(result.outputPath)
+			.then(() => true)
+			.catch(() => false)
 		expect(exists).toBe(true)
 	})
 
@@ -90,7 +102,10 @@ describe('optimizeImage', () => {
 
 		const result = await optimizeImage(filePath, baseOptions(destination, 'avif'))
 
-		const exists = await fs.stat(result.outputPath).then(() => true).catch(() => false)
+		const exists = await fs
+			.stat(result.outputPath)
+			.then(() => true)
+			.catch(() => false)
 		expect(exists).toBe(true)
 	})
 
@@ -104,7 +119,10 @@ describe('optimizeImage', () => {
 		})
 
 		expect(result.outputPath.endsWith('.webp')).toBe(true)
-		const exists = await fs.stat(result.outputPath).then(() => true).catch(() => false)
+		const exists = await fs
+			.stat(result.outputPath)
+			.then(() => true)
+			.catch(() => false)
 		expect(exists).toBe(true)
 	})
 

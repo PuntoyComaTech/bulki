@@ -15,7 +15,7 @@ export async function createDestinationPath(
 
 	if (options.toFormat) {
 		const ext = path.extname(outputPath)
-		outputPath = outputPath.slice(0, outputPath.length - ext.length) + '.' + options.toFormat
+		outputPath = `${outputPath.slice(0, outputPath.length - ext.length)}.${options.toFormat}`
 	}
 
 	await fs.mkdir(path.dirname(outputPath), { recursive: true })

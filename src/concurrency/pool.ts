@@ -5,7 +5,7 @@ export async function processPool<T, R>(
 ): Promise<R[]> {
 	const results: R[] = new Array(items.length)
 	const executing = new Set<Promise<void>>()
-	let firstError: unknown = undefined
+	let firstError: unknown
 	let hasError = false
 
 	for (let i = 0; i < items.length; i++) {

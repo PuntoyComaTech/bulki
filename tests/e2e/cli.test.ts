@@ -1,8 +1,8 @@
-import { describe, it, expect, afterEach } from 'vitest'
-import { execa } from 'execa'
-import path from 'node:path'
 import fs from 'node:fs/promises'
 import os from 'node:os'
+import path from 'node:path'
+import { execa } from 'execa'
+import { afterEach, describe, expect, it } from 'vitest'
 
 const BIN = path.resolve(import.meta.dirname, '../../dist/bin/bulki.js')
 const FIXTURES = path.resolve(import.meta.dirname, '../fixtures')
@@ -57,11 +57,9 @@ describe('bulki CLI', () => {
 
 		it('exits with non-zero code and mentions quality when quality is above valid range', async () => {
 			tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'bulki-'))
-			const result = await execa(
-				'node',
-				[BIN, 'compress', FIXTURES, '-q', '200'],
-				{ reject: false },
-			)
+			const result = await execa('node', [BIN, 'compress', FIXTURES, '-q', '200'], {
+				reject: false,
+			})
 			expect(result.exitCode).not.toBe(0)
 			const combined = result.stdout + result.stderr
 			expect(combined).toMatch(/quality/i)
@@ -101,10 +99,20 @@ describe('bulki CLI', () => {
 	describe('compress command — --dry-run', () => {
 		it('exits with code 0 and does not create any output files when --dry-run is passed', async () => {
 			tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'bulki-'))
-			const { exitCode } = await execa('node', [BIN, 'compress', FIXTURES, '-d', tmpDir, '--dry-run'])
+			const { exitCode } = await execa('node', [
+				BIN,
+				'compress',
+				FIXTURES,
+				'-d',
+				tmpDir,
+				'--dry-run',
+			])
 			expect(exitCode).toBe(0)
 			const outputDir = path.join(tmpDir, 'bulki-output')
-			const exists = await fs.stat(outputDir).then(() => true).catch(() => false)
+			const exists = await fs
+				.stat(outputDir)
+				.then(() => true)
+				.catch(() => false)
 			expect(exists).toBe(false)
 		})
 	})

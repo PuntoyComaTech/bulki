@@ -1,5 +1,5 @@
-import { Command } from 'commander'
 import { createRequire } from 'node:module'
+import { Command } from 'commander'
 import { compressCommand } from '../commands/compress.js'
 
 const require = createRequire(import.meta.url)
@@ -10,10 +10,7 @@ if (process.argv.length <= 2) {
 	await runInteractive()
 } else {
 	const program = new Command()
-	program
-		.name('bulki')
-		.description('Ultra-fast CLI image optimizer')
-		.version(version)
+	program.name('bulki').description('Ultra-fast CLI image optimizer').version(version)
 
 	program.addCommand(compressCommand)
 	program.parse()

@@ -1,14 +1,14 @@
-import { Command } from 'commander'
 import fs from 'node:fs/promises'
 import path from 'node:path'
-import { validateOptions, type RawOptions } from '../validation/options.js'
+import { Command } from 'commander'
+import { processPool } from '../concurrency/pool.js'
+import { createProgressBar } from '../output/progress.js'
+import { formatFileResult, formatSummary } from '../output/results.js'
 import { discoverFiles } from '../pipeline/discover.js'
 import { detectFormat } from '../pipeline/filter.js'
 import { optimizeImage } from '../pipeline/optimize.js'
-import { processPool } from '../concurrency/pool.js'
-import { formatFileResult, formatSummary } from '../output/results.js'
-import { createProgressBar } from '../output/progress.js'
 import type { CompressOptions, FileResult } from '../types/index.js'
+import { type RawOptions, validateOptions } from '../validation/options.js'
 
 export const compressCommand = new Command('compress')
 	.description('Compress images in a file or directory')
@@ -32,7 +32,7 @@ export const compressCommand = new Command('compress')
 		}
 
 		const resolvedPath = path.resolve(inputPath)
-		let stats
+		let stats: Awaited<ReturnType<typeof fs.stat>>
 		try {
 			stats = await fs.stat(resolvedPath)
 		} catch {
@@ -62,7 +62,7 @@ export const compressCommand = new Command('compress')
 
 		if (options.dryRun) {
 			console.log(`Would process ${filePaths.length} image(s)`)
-			filePaths.forEach((f) => console.log(`  ${path.basename(f.path)}`))
+			for (const f of filePaths) console.log(`  ${path.basename(f.path)}`)
 			return
 		}
 
@@ -77,7 +77,11 @@ export const compressCommand = new Command('compress')
 			filePaths,
 			async (file) => {
 				try {
-					const result = await optimizeImage(file.path, { ...options, sourcePath, detectedFormat: file.format })
+					const result = await optimizeImage(file.path, {
+						...options,
+						sourcePath,
+						detectedFormat: file.format,
+					})
 					if (options.verbose) {
 						console.log(formatFileResult(result))
 					}

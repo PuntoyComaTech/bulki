@@ -1,6 +1,6 @@
 import fs from 'node:fs/promises'
-import sharp from 'sharp'
 import type { FormatEnum } from 'sharp'
+import sharp from 'sharp'
 import type { CompressOptions, FileResult } from '../types/index.js'
 import { createDestinationPath } from './destination.js'
 
@@ -35,14 +35,14 @@ export async function optimizeImage(
 		pipeline = pipeline.resize(options.resize)
 	}
 
-	pipeline = pipeline.toFormat(outputFormat as keyof FormatEnum, formatOptions[outputFormat as keyof FormatEnum] ?? {})
+	pipeline = pipeline.toFormat(
+		outputFormat as keyof FormatEnum,
+		formatOptions[outputFormat as keyof FormatEnum] ?? {},
+	)
 
 	await pipeline.toFile(destinationPath)
 
-	const [originalStat, newStat] = await Promise.all([
-		fs.stat(filePath),
-		fs.stat(destinationPath),
-	])
+	const [originalStat, newStat] = await Promise.all([fs.stat(filePath), fs.stat(destinationPath)])
 
 	const duration = performance.now() - start
 

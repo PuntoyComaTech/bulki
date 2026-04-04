@@ -1,7 +1,6 @@
-import { describe, it, expect } from 'vitest'
-import path from 'node:path'
-import { formatFileResult, formatSummary } from '../../src/output/results.js'
+import { describe, expect, it } from 'vitest'
 import type { FileResult } from '../../src/output/results.js'
+import { formatFileResult, formatSummary } from '../../src/output/results.js'
 
 function makeFileResult(overrides: Partial<FileResult> = {}): FileResult {
 	return {
@@ -36,17 +35,13 @@ describe('formatFileResult', () => {
 
 	it('contains the reduction percentage when new size is smaller than original', () => {
 		// originalSize=1000, newSize=280 => 72% reduction
-		const result = formatFileResult(
-			makeFileResult({ originalSize: 1000, newSize: 280 }),
-		)
+		const result = formatFileResult(makeFileResult({ originalSize: 1000, newSize: 280 }))
 		expect(result).toContain('72%')
 	})
 
 	it('shows an increase indicator when new size exceeds original size', () => {
 		// newSize > originalSize => size grew, should show something like +15%
-		const result = formatFileResult(
-			makeFileResult({ originalSize: 1000, newSize: 1150 }),
-		)
+		const result = formatFileResult(makeFileResult({ originalSize: 1000, newSize: 1150 }))
 		expect(result).toMatch(/\+\d+%/)
 	})
 })

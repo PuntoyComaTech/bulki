@@ -1,15 +1,14 @@
+import fs from 'node:fs/promises'
+import { availableParallelism } from 'node:os'
+import path from 'node:path'
 import * as p from '@clack/prompts'
 import { isCancel } from '@clack/prompts'
-import fs from 'node:fs/promises'
-import path from 'node:path'
+import { processPool } from '../concurrency/pool.js'
+import { formatSummary } from '../output/results.js'
 import { discoverFiles } from '../pipeline/discover.js'
 import { detectFormat } from '../pipeline/filter.js'
 import { optimizeImage } from '../pipeline/optimize.js'
-import { processPool } from '../concurrency/pool.js'
-import { formatSummary } from '../output/results.js'
-import { formatBytes } from '../output/format-bytes.js'
 import type { CompressOptions, FileResult } from '../types/index.js'
-import { availableParallelism } from 'node:os'
 
 const PRESETS = {
 	web: {
@@ -48,7 +47,7 @@ export async function runInteractive(): Promise<void> {
 	}
 
 	let format: string | undefined
-	let quality: number
+	let quality = 70
 	let resize: number | undefined
 
 	if (presetKey !== 'custom') {
@@ -79,7 +78,7 @@ export async function runInteractive(): Promise<void> {
 						initialValue: '70',
 						validate(value) {
 							const n = parseInt(value ?? '', 10)
-							if (isNaN(n) || n < 1 || n > 100) return 'Must be between 1 and 100'
+							if (Number.isNaN(n) || n < 1 || n > 100) return 'Must be between 1 and 100'
 						},
 					}),
 				resize: () =>
@@ -109,7 +108,7 @@ export async function runInteractive(): Promise<void> {
 				placeholder: '1200',
 				validate(value) {
 					const n = parseInt(value ?? '', 10)
-					if (isNaN(n) || n <= 0) return 'Must be a positive number'
+					if (Number.isNaN(n) || n <= 0) return 'Must be a positive number'
 				},
 			})
 			if (isCancel(customWidth)) {
@@ -142,7 +141,7 @@ export async function runInteractive(): Promise<void> {
 
 	const resolvedPath = path.resolve(inputPath as string)
 
-	let stats
+	let stats: Awaited<ReturnType<typeof fs.stat>>
 	try {
 		stats = await fs.stat(resolvedPath)
 	} catch {
@@ -192,7 +191,7 @@ export async function runInteractive(): Promise<void> {
 		[
 			`Source:    ${resolvedPath} (${filePaths.length} images found)`,
 			`Format:    ${formatLabel}`,
-			`Quality:   ${quality!}`,
+			`Quality:   ${quality}`,
 			`Resize:    ${resizeLabel}`,
 			`Output:    ${path.join(destination, 'bulki-output')}`,
 		].join('\n'),
@@ -208,7 +207,7 @@ export async function runInteractive(): Promise<void> {
 
 	// Process images
 	const options: CompressOptions = {
-		quality: quality!,
+		quality: quality,
 		format,
 		resize,
 		destination,

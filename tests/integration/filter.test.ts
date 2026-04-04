@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest'
 import path from 'node:path'
+import { describe, expect, it } from 'vitest'
 import { isImage } from '../../src/pipeline/filter.js'
 
 const FIXTURES = path.resolve(import.meta.dirname, '../fixtures')

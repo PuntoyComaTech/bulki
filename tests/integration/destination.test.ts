@@ -1,7 +1,7 @@
-import { describe, it, expect, afterEach } from 'vitest'
-import path from 'node:path'
 import fs from 'node:fs/promises'
 import os from 'node:os'
+import path from 'node:path'
+import { afterEach, describe, expect, it } from 'vitest'
 import { createDestinationPath } from '../../src/pipeline/destination.js'
 
 const FIXTURES = path.resolve(import.meta.dirname, '../fixtures')
