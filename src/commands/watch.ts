@@ -53,7 +53,7 @@ export async function startWatch(dirPath: string, opts: WatchOptions = {}): Prom
 		// Skip files in the output folder to avoid infinite loops
 		const resolvedDest = destination === '.' ? resolvedPath : path.resolve(destination)
 		const outputDir = path.join(resolvedDest, outputFolder)
-		if (fullPath.startsWith(outputDir)) {
+		if (fullPath === outputDir || fullPath.startsWith(`${outputDir}${path.sep}`)) {
 			processing.delete(fullPath)
 			return
 		}

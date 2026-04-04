@@ -27,6 +27,7 @@ export async function* discoverFiles(dirPath: string, exclude?: string[]): Async
 	const entries = await fs.readdir(dirPath, { withFileTypes: true })
 	for (const entry of entries) {
 		if (entry.name.startsWith('.')) continue
+		if (entry.isSymbolicLink()) continue
 		const fullPath = path.resolve(dirPath, entry.name)
 		if (entry.isDirectory()) {
 			if (exclude?.includes(entry.name)) continue

@@ -1,6 +1,7 @@
 import { Command } from 'commander'
 import sharp from 'sharp'
 import { getFormatOptions } from '../pipeline/optimize.js'
+import { VALID_FORMATS } from '../validation/options.js'
 
 export const pipeCommand = new Command('pipe')
 	.description('Read image from stdin, write optimized image to stdout')
@@ -23,8 +24,7 @@ export const pipeCommand = new Command('pipe')
 		const quality = opts.quality
 		const resize = opts.resize
 
-		const validFormats = ['jpeg', 'jpg', 'png', 'webp', 'gif', 'avif']
-		if (!validFormats.includes(format)) {
+		if (!VALID_FORMATS.includes(format)) {
 			process.stderr.write(`Error: invalid format "${format}"\n`)
 			process.exit(1)
 		}

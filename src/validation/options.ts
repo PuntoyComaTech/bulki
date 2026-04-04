@@ -27,7 +27,7 @@ export function parseSize(input: string): number {
 	return value * 1024 * 1024
 }
 
-const VALID_FORMATS = ['jpeg', 'jpg', 'png', 'webp', 'gif', 'avif']
+export const VALID_FORMATS = ['jpeg', 'jpg', 'png', 'webp', 'gif', 'avif']
 
 export function validateOptions(raw: Partial<RawOptions>): CompressOptions {
 	const quality = raw.quality ?? 70
@@ -58,12 +58,17 @@ export function validateOptions(raw: Partial<RawOptions>): CompressOptions {
 		maxSize = parseSize(raw.maxSize)
 	}
 
+	const outputFolder = raw.outputFolder ?? 'bulki-output'
+	if (outputFolder.includes('/') || outputFolder.includes('\\') || outputFolder.includes('..')) {
+		throw new Error('Invalid outputFolder: must be a simple directory name without path separators')
+	}
+
 	return {
 		quality,
 		format,
 		resize,
 		destination: raw.destination ?? '.',
-		outputFolder: raw.outputFolder ?? 'bulki-output',
+		outputFolder,
 		concurrency,
 		exclude: raw.exclude ?? [],
 		dryRun: raw.dryRun ?? false,
