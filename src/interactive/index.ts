@@ -9,6 +9,7 @@ import { formatSummary } from '../output/results.js'
 import { collectImageFiles } from '../pipeline/discover.js'
 import { optimizeImage } from '../pipeline/optimize.js'
 import type { CompressOptions, FileResult } from '../types/index.js'
+import { DEFAULTS } from '../validation/options.js'
 
 const PRESETS = {
 	web: {
@@ -48,7 +49,7 @@ async function collectPresetOptions(): Promise<{
 	}
 
 	let format: string | undefined
-	let quality = 70
+	let quality = DEFAULTS.quality
 	let resize: number | undefined
 
 	if (presetKey !== 'custom') {
@@ -75,8 +76,8 @@ async function collectPresetOptions(): Promise<{
 				quality: () =>
 					p.text({
 						message: 'Quality (1-100)',
-						placeholder: '70',
-						initialValue: '70',
+						placeholder: String(DEFAULTS.quality),
+						initialValue: String(DEFAULTS.quality),
 						validate(value) {
 							const n = parseInt(value ?? '', 10)
 							if (Number.isNaN(n) || n < 1 || n > 100) return 'Must be between 1 and 100'
@@ -167,8 +168,8 @@ async function runCompress(): Promise<void> {
 	// Destination input
 	const destInput = await p.text({
 		message: 'Destination directory',
-		placeholder: '.',
-		initialValue: '.',
+		placeholder: DEFAULTS.destination,
+		initialValue: DEFAULTS.destination,
 	})
 
 	if (isCancel(destInput)) {
@@ -176,7 +177,7 @@ async function runCompress(): Promise<void> {
 		process.exit(0)
 	}
 
-	const destination = (destInput as string) || '.'
+	const destination = (destInput as string) || DEFAULTS.destination
 
 	// Show summary
 	const resizeLabel = resize ? `${resize}px` : 'No resize'
@@ -187,7 +188,7 @@ async function runCompress(): Promise<void> {
 			`Format:    ${formatLabel}`,
 			`Quality:   ${quality}`,
 			`Resize:    ${resizeLabel}`,
-			`Output:    ${path.join(destination, 'bulki-output')}`,
+			`Output:    ${path.join(destination, DEFAULTS.outputFolder)}`,
 		].join('\n'),
 		'Summary',
 	)
@@ -205,7 +206,7 @@ async function runCompress(): Promise<void> {
 		format,
 		resize,
 		destination,
-		outputFolder: 'bulki-output',
+		outputFolder: DEFAULTS.outputFolder,
 		concurrency: availableParallelism(),
 		exclude: [],
 		dryRun: false,
@@ -269,8 +270,8 @@ async function runWatch(): Promise<void> {
 
 	const destInput = await p.text({
 		message: 'Destination directory',
-		placeholder: '.',
-		initialValue: '.',
+		placeholder: DEFAULTS.destination,
+		initialValue: DEFAULTS.destination,
 	})
 
 	if (isCancel(destInput)) {
@@ -278,7 +279,7 @@ async function runWatch(): Promise<void> {
 		process.exit(0)
 	}
 
-	const destination = (destInput as string) || '.'
+	const destination = (destInput as string) || DEFAULTS.destination
 
 	p.log.info(`Watching ${watchDir}... Press Ctrl+C to stop.`)
 

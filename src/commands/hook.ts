@@ -11,16 +11,35 @@ ${HOOK_MARKER}
 # Installed by: bulki hook install
 # Remove with: bulki hook uninstall
 
-git diff --cached --name-only -z --diff-filter=ACM | grep -zE '\\.(jpe?g|png|webp|gif|avif)$' | while IFS= read -r -d '' img; do
+STAGED=$(git diff --cached --name-only -z --diff-filter=ACM | tr '\\0' '\\n' | grep -iE '\\.(jpe?g|png|webp|gif|avif)$')
+
+if [ -z "$STAGED" ]; then
+  exit 0
+fi
+
+echo "bulki: optimizing staged images..."
+
+tmpdir=$(mktemp -d)
+trap 'rm -rf "$tmpdir"' EXIT
+
+echo "$STAGED" | while IFS= read -r img; do
   if [ -f "$img" ]; then
-    dir=$(mktemp -d)
-    npx @puntoycoma/bulki compress "$img" -d "$dir" -o "." -q 80 2>/dev/null
-    optimized="$dir/$(basename "$img")"
-    if [ -f "$optimized" ]; then
-      mv "$optimized" "$img"
+    ext="\${img##*.}"
+    case "$(echo "$ext" | tr '[:upper:]' '[:lower:]')" in
+      jpg|jpeg) fmt="jpeg" ;;
+      png) fmt="png" ;;
+      webp) fmt="webp" ;;
+      gif) fmt="gif" ;;
+      avif) fmt="avif" ;;
+      *) continue ;;
+    esac
+    tmpfile="$tmpdir/$(basename "$img")"
+    if npx --yes @puntoycoma/bulki pipe -f "$fmt" -q 80 < "$img" > "$tmpfile" 2>/dev/null; then
+      if [ -s "$tmpfile" ]; then
+        mv "$tmpfile" "$img"
+        git add "$img"
+      fi
     fi
-    rm -rf "$dir"
-    git add "$img"
   fi
 done
 
@@ -47,6 +66,7 @@ export async function installHook(): Promise<void> {
 			return
 		}
 		await fs.appendFile(hookPath, `\n${HOOK_SCRIPT}`)
+		await fs.chmod(hookPath, 0o755)
 		console.log('bulki hook appended to existing pre-commit hook.')
 	} catch {
 		await fs.writeFile(hookPath, HOOK_SCRIPT, { mode: 0o755 })
