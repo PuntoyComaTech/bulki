@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { FileResult } from '../../src/output/results.js'
-import { formatFileResult, formatSummary } from '../../src/output/results.js'
+import { buildJsonOutput, formatFileResult, formatSummary } from '../../src/output/results.js'
 
 function makeFileResult(overrides: Partial<FileResult> = {}): FileResult {
 	return {
@@ -101,5 +101,77 @@ describe('formatSummary', () => {
 		const result = formatSummary(sampleResults, [], 800)
 		// Should not mention an error count > 0 — must be absent or explicitly "0 errors"
 		expect(result).not.toMatch(/[1-9]\d* error/)
+	})
+})
+
+describe('buildJsonOutput', () => {
+	const sampleResult: FileResult = {
+		inputPath: '/photos/beach.jpg',
+		outputPath: '/out/bulki-output/beach.webp',
+		originalSize: 2400000,
+		newSize: 680000,
+		format: 'webp',
+		duration: 45,
+	}
+
+	it('returns an object with files, summary, and errors keys', () => {
+		const output = buildJsonOutput([sampleResult], [], 120)
+		expect(output).toHaveProperty('files')
+		expect(output).toHaveProperty('summary')
+		expect(output).toHaveProperty('errors')
+	})
+
+	it('maps FileResult to JsonFileResult with correct fields', () => {
+		const output = buildJsonOutput([sampleResult], [], 120)
+		const file = output.files[0]
+		expect(file.input).toBe('/photos/beach.jpg')
+		expect(file.output).toBe('/out/bulki-output/beach.webp')
+		expect(file.originalSize).toBe(2400000)
+		expect(file.newSize).toBe(680000)
+		expect(file.format).toBe('webp')
+		expect(file.duration).toBe(45)
+	})
+
+	it('calculates reduction percentage correctly', () => {
+		const output = buildJsonOutput([sampleResult], [], 120)
+		// (1 - 680000/2400000) * 100 = 71.67 => rounded to 72
+		expect(output.files[0].reduction).toBe(72)
+	})
+
+	it('builds summary with correct totals', () => {
+		const output = buildJsonOutput([sampleResult], [], 120)
+		expect(output.summary.totalFiles).toBe(1)
+		expect(output.summary.totalOriginalSize).toBe(2400000)
+		expect(output.summary.totalNewSize).toBe(680000)
+		expect(output.summary.duration).toBe(120)
+		expect(output.summary.errors).toBe(0)
+	})
+
+	it('calculates totalReduction in summary', () => {
+		const output = buildJsonOutput([sampleResult], [], 120)
+		expect(output.summary.totalReduction).toBe(72)
+	})
+
+	it('handles empty results array', () => {
+		const output = buildJsonOutput([], [], 0)
+		expect(output.files).toEqual([])
+		expect(output.summary.totalFiles).toBe(0)
+		expect(output.summary.totalOriginalSize).toBe(0)
+		expect(output.summary.totalNewSize).toBe(0)
+		expect(output.summary.totalReduction).toBe(0)
+	})
+
+	it('includes errors array with file and message fields', () => {
+		const errors = [{ file: '/bad/image.jpg', message: 'unsupported format' }]
+		const output = buildJsonOutput([], errors, 0)
+		expect(output.errors).toHaveLength(1)
+		expect(output.errors[0].file).toBe('/bad/image.jpg')
+		expect(output.errors[0].message).toBe('unsupported format')
+	})
+
+	it('counts errors in summary', () => {
+		const errors = [{ file: '/bad/image.jpg', message: 'failed' }]
+		const output = buildJsonOutput([], errors, 0)
+		expect(output.summary.errors).toBe(1)
 	})
 })

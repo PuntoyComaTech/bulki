@@ -11,6 +11,20 @@ export interface RawOptions {
 	exclude: string[]
 	dryRun: boolean
 	verbose: boolean
+	json: boolean
+	maxSize: string
+}
+
+export function parseSize(input: string): number {
+	const match = /^(\d+(?:\.\d+)?)(b|kb|mb)$/i.exec(input)
+	if (!match) {
+		throw new Error(`Invalid size format: "${input}". Expected format like 200kb, 1mb, 500b`)
+	}
+	const value = Number(match[1])
+	const unit = match[2].toLowerCase()
+	if (unit === 'b') return value
+	if (unit === 'kb') return value * 1024
+	return value * 1024 * 1024
 }
 
 const VALID_FORMATS = ['jpeg', 'jpg', 'png', 'webp', 'gif', 'avif']
@@ -39,6 +53,11 @@ export function validateOptions(raw: Partial<RawOptions>): CompressOptions {
 		throw new Error(`Invalid concurrency: must be between 1 and 32`)
 	}
 
+	let maxSize: number | undefined
+	if (raw.maxSize !== undefined) {
+		maxSize = parseSize(raw.maxSize)
+	}
+
 	return {
 		quality,
 		format,
@@ -49,5 +68,7 @@ export function validateOptions(raw: Partial<RawOptions>): CompressOptions {
 		exclude: raw.exclude ?? [],
 		dryRun: raw.dryRun ?? false,
 		verbose: raw.verbose ?? false,
+		json: raw.json ?? false,
+		maxSize,
 	}
 }

@@ -2,6 +2,7 @@ import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { execa } from 'execa'
+import sharp from 'sharp'
 import { afterEach, describe, expect, it } from 'vitest'
 
 const BIN = path.resolve(import.meta.dirname, '../../dist/bin/bulki.js')
@@ -164,6 +165,167 @@ describe('bulki CLI', () => {
 				'--verbose',
 			])
 			expect(stdout).toContain('sample.jpg')
+		})
+	})
+
+	describe('compress command — --json', () => {
+		it('outputs valid JSON when --json flag is passed', async () => {
+			tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'bulki-'))
+			const { stdout } = await execa('node', [BIN, 'compress', FIXTURES, '-d', tmpDir, '--json'])
+			expect(() => JSON.parse(stdout)).not.toThrow()
+		})
+
+		it('outputs JSON with a files array when --json flag is passed', async () => {
+			tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'bulki-'))
+			const { stdout } = await execa('node', [BIN, 'compress', FIXTURES, '-d', tmpDir, '--json'])
+			const parsed = JSON.parse(stdout)
+			expect(Array.isArray(parsed.files)).toBe(true)
+		})
+
+		it('outputs JSON with summary and errors keys', async () => {
+			tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'bulki-'))
+			const { stdout } = await execa('node', [BIN, 'compress', FIXTURES, '-d', tmpDir, '--json'])
+			const parsed = JSON.parse(stdout)
+			expect(parsed).toHaveProperty('summary')
+			expect(parsed).toHaveProperty('errors')
+		})
+	})
+
+	describe('compress command — --max-size', () => {
+		it('exits with non-zero code when --max-size 1b is passed (all files exceed 1 byte)', async () => {
+			tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'bulki-'))
+			const result = await execa(
+				'node',
+				[BIN, 'compress', FIXTURES, '-d', tmpDir, '--max-size', '1b'],
+				{ reject: false },
+			)
+			expect(result.exitCode).not.toBe(0)
+		})
+
+		it('exits with code 0 when --max-size 1mb is passed (all fixtures are small)', async () => {
+			tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'bulki-'))
+			const { exitCode } = await execa('node', [
+				BIN,
+				'compress',
+				FIXTURES,
+				'-d',
+				tmpDir,
+				'--max-size',
+				'1mb',
+			])
+			expect(exitCode).toBe(0)
+		})
+	})
+
+	describe('hook command', () => {
+		it('hook install creates pre-commit hook', async () => {
+			const hookTmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'bulki-hook-'))
+			try {
+				await execa('git', ['init'], { cwd: hookTmpDir })
+
+				const { exitCode, stdout } = await execa('node', [BIN, 'hook', 'install'], {
+					cwd: hookTmpDir,
+				})
+
+				expect(exitCode).toBe(0)
+				expect(stdout).toContain('installed')
+
+				const hookPath = path.join(hookTmpDir, '.git', 'hooks', 'pre-commit')
+				const hookContent = await fs.readFile(hookPath, 'utf-8')
+				expect(hookContent).toContain('bulki')
+			} finally {
+				await fs.rm(hookTmpDir, { recursive: true, force: true })
+			}
+		})
+
+		it('hook uninstall removes pre-commit hook', async () => {
+			const hookTmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'bulki-hook-'))
+			try {
+				await execa('git', ['init'], { cwd: hookTmpDir })
+
+				await execa('node', [BIN, 'hook', 'install'], { cwd: hookTmpDir })
+
+				const { exitCode, stdout } = await execa('node', [BIN, 'hook', 'uninstall'], {
+					cwd: hookTmpDir,
+				})
+
+				expect(exitCode).toBe(0)
+				expect(stdout).toContain('removed')
+			} finally {
+				await fs.rm(hookTmpDir, { recursive: true, force: true })
+			}
+		})
+
+		it('hook install outside git repo shows error', async () => {
+			const hookTmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'bulki-nogit-'))
+			try {
+				const result = await execa('node', [BIN, 'hook', 'install'], {
+					cwd: hookTmpDir,
+					reject: false,
+				})
+
+				expect(result.exitCode).not.toBe(0)
+			} finally {
+				await fs.rm(hookTmpDir, { recursive: true, force: true })
+			}
+		})
+	})
+
+	describe('pipe command', () => {
+		it('reads image from stdin and writes to stdout', async () => {
+			const inputPath = path.join(FIXTURES, 'sample.jpg')
+			const input = await fs.readFile(inputPath)
+
+			const { stdout } = await execa('node', [BIN, 'pipe', '-f', 'webp'], {
+				input,
+				encoding: 'buffer',
+			})
+
+			expect(stdout.length).toBeGreaterThan(0)
+
+			const metadata = await sharp(Buffer.from(stdout)).metadata()
+			expect(metadata.format).toBe('webp')
+		})
+
+		it('pipe with quality option works', async () => {
+			const input = await fs.readFile(path.join(FIXTURES, 'sample.jpg'))
+
+			const { stdout } = await execa('node', [BIN, 'pipe', '-f', 'jpeg', '-q', '10'], {
+				input,
+				encoding: 'buffer',
+			})
+
+			expect(stdout.length).toBeGreaterThan(0)
+			expect(stdout.length).toBeLessThan(input.length + 500)
+		})
+
+		it('pipe with resize option works', async () => {
+			const input = await fs.readFile(path.join(FIXTURES, 'sample.jpg'))
+
+			const { stdout } = await execa('node', [BIN, 'pipe', '-f', 'jpeg', '-r', '50'], {
+				input,
+				encoding: 'buffer',
+			})
+
+			const metadata = await sharp(Buffer.from(stdout)).metadata()
+			expect(metadata.width).toBe(50)
+		})
+
+		it('pipe with no stdin shows error', async () => {
+			const result = await execa('node', [BIN, 'pipe', '-f', 'webp'], {
+				input: Buffer.alloc(0),
+				reject: false,
+			})
+			expect(result.exitCode).not.toBe(0)
+		})
+
+		it('pipe without format flag shows error', async () => {
+			const input = await fs.readFile(path.join(FIXTURES, 'sample.jpg'))
+			const result = await execa('node', [BIN, 'pipe'], {
+				input,
+				reject: false,
+			})
+			expect(result.exitCode).not.toBe(0)
 		})
 	})
 })
