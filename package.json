@@ -1,6 +1,6 @@
 {
 	"name": "@PuntoyComaTech/bulki",
-	"version": "2.0.0",
+	"version": "2.1.0",
 	"description": "Ultra-fast CLI image optimizer. Compress, resize, and convert images in bulk.",
 	"keywords": [
 		"image",

@@ -1,5 +1,6 @@
 {
-	"last-release-sha": "63e0af6",
+	"bootstrap-sha": "49f60c6",
+	"last-release-sha": "49f60c6",
 	"packages": {
 		".": {
 			"release-type": "node",
