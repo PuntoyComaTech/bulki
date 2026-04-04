@@ -1,7 +1,7 @@
 {
 	"name": "@puntoycoma/bulki",
 	"version": "2.0.0",
-	"description": "Ultra-fast CLI image optimizer with interactive TUI, MCP server for AI editors, git hooks, watch mode, and piping. Compress, resize, and convert JPEG, PNG, WebP, GIF, AVIF in bulk. Free and open source.",
+	"description": "Bulk image optimizer CLI — compress, resize, convert JPEG/PNG/WebP/AVIF. Interactive mode, MCP server for AI editors, watch mode, git hooks. Free.",
 	"keywords": [
 		"image",
 		"optimizer",
@@ -34,14 +34,26 @@
 		"open-source",
 		"image-compression",
 		"image-optimization",
-		"image-processing"
+		"image-processing",
+		"tinypng-alternative",
+		"imagemin-alternative",
+		"squoosh-alternative",
+		"sharp-cli",
+		"optimize-images",
+		"compress-images",
+		"webp-converter",
+		"avif-converter",
+		"image-resizer",
+		"performance",
+		"web-performance",
+		"lossless",
+		"lossy"
 	],
 	"author": "Gabriel Rubio",
-	"license": "MIT",
+	"license": "AGPL-3.0-only",
 	"type": "module",
 	"bin": {
-		"bulki": "./dist/bin/bulki.js",
-		"gio": "./dist/bin/bulki.js"
+		"bulki": "./dist/bin/bulki.js"
 	},
 	"files": [
 		"dist"
