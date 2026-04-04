@@ -49,7 +49,7 @@
 		"lossless",
 		"lossy"
 	],
-	"author": "Gabriel Rubio",
+	"author": "PuntoyComaTech",
 	"license": "AGPL-3.0-only",
 	"type": "module",
 	"bin": {
