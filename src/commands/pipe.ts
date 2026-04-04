@@ -1,4 +1,5 @@
 import { Command } from 'commander'
+import type { FormatEnum } from 'sharp'
 import sharp from 'sharp'
 import { getFormatOptions } from '../pipeline/optimize.js'
 import { VALID_FORMATS } from '../validation/options.js'
@@ -9,8 +10,15 @@ export const pipeCommand = new Command('pipe')
 	.option('-q, --quality <n>', 'Quality (1-100)', (v) => parseInt(v, 10), 70)
 	.option('-r, --resize <width>', 'Resize to width (px)', (v) => parseInt(v, 10))
 	.action(async (opts) => {
+		const MAX_INPUT_SIZE = 100 * 1024 * 1024 // 100 MB
 		const chunks: Buffer[] = []
+		let totalSize = 0
 		for await (const chunk of process.stdin) {
+			totalSize += chunk.length
+			if (totalSize > MAX_INPUT_SIZE) {
+				process.stderr.write('Error: input exceeds 100 MB limit\n')
+				process.exit(1)
+			}
 			chunks.push(chunk)
 		}
 		const input = Buffer.concat(chunks)
@@ -41,7 +49,7 @@ export const pipeCommand = new Command('pipe')
 			}
 
 			pipeline = pipeline.toFormat(
-				outputFormat as Parameters<typeof sharp.prototype.toFormat>[0],
+				outputFormat as keyof FormatEnum,
 				formatOptions[outputFormat] ?? {},
 			)
 

@@ -38,6 +38,23 @@ export const mcpCommand = new Command('mcp')
 				maxSize: z.string().optional().describe('Max file size budget (e.g., 200kb, 1mb)'),
 			},
 			async (params) => {
+				if (
+					params.outputFolder.includes('/') ||
+					params.outputFolder.includes('\\') ||
+					params.outputFolder.includes('..')
+				) {
+					return {
+						content: [
+							{
+								type: 'text' as const,
+								text: JSON.stringify({
+									error: 'Invalid outputFolder: must be a simple directory name',
+								}),
+							},
+						],
+					}
+				}
+
 				const resolvedPath = path.resolve(params.path)
 
 				let filePaths: { path: string; format: string }[]

@@ -29,8 +29,14 @@ export function parseSize(input: string): number {
 
 export const VALID_FORMATS = ['jpeg', 'jpg', 'png', 'webp', 'gif', 'avif']
 
+export const DEFAULTS = {
+	quality: 70,
+	destination: '.',
+	outputFolder: 'bulki-output',
+} as const
+
 export function validateOptions(raw: Partial<RawOptions>): CompressOptions {
-	const quality = raw.quality ?? 70
+	const quality = raw.quality ?? DEFAULTS.quality
 	if (typeof quality !== 'number' || !Number.isInteger(quality) || quality < 1 || quality > 100) {
 		throw new Error(`Invalid quality: must be an integer between 1 and 100`)
 	}
@@ -58,7 +64,7 @@ export function validateOptions(raw: Partial<RawOptions>): CompressOptions {
 		maxSize = parseSize(raw.maxSize)
 	}
 
-	const outputFolder = raw.outputFolder ?? 'bulki-output'
+	const outputFolder = raw.outputFolder ?? DEFAULTS.outputFolder
 	if (outputFolder.includes('/') || outputFolder.includes('\\') || outputFolder.includes('..')) {
 		throw new Error('Invalid outputFolder: must be a simple directory name without path separators')
 	}
@@ -67,7 +73,7 @@ export function validateOptions(raw: Partial<RawOptions>): CompressOptions {
 		quality,
 		format,
 		resize,
-		destination: raw.destination ?? '.',
+		destination: raw.destination ?? DEFAULTS.destination,
 		outputFolder,
 		concurrency,
 		exclude: raw.exclude ?? [],

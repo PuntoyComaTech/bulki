@@ -4,6 +4,7 @@ import { Command } from 'commander'
 import { formatFileResult } from '../output/results.js'
 import { detectFormat } from '../pipeline/filter.js'
 import { optimizeImage } from '../pipeline/optimize.js'
+import { DEFAULTS } from '../validation/options.js'
 
 export interface WatchOptions {
 	quality?: number
@@ -28,11 +29,11 @@ export async function startWatch(dirPath: string, opts: WatchOptions = {}): Prom
 		process.exit(1)
 	}
 
-	const quality = opts.quality ?? 70
+	const quality = opts.quality ?? DEFAULTS.quality
 	const format = opts.format === 'jpg' ? 'jpeg' : opts.format
 	const resize = opts.resize
-	const destination = opts.destination ?? '.'
-	const outputFolder = opts.outputFolder ?? 'bulki-output'
+	const destination = opts.destination ?? DEFAULTS.destination
+	const outputFolder = opts.outputFolder ?? DEFAULTS.outputFolder
 
 	console.log(`Watching ${resolvedPath} for new images...`)
 	console.log('Press Ctrl+C to stop.\n')
@@ -65,6 +66,7 @@ export async function startWatch(dirPath: string, opts: WatchOptions = {}): Prom
 		try {
 			await fs.promises.stat(fullPath)
 		} catch {
+			processing.delete(fullPath)
 			return
 		}
 

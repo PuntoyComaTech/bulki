@@ -3,6 +3,7 @@ import path from 'node:path'
 import { Command } from 'commander'
 
 const HOOK_MARKER = '# bulki-pre-commit-hook'
+const HOOK_END_MARKER = '# bulki-pre-commit-hook-end'
 
 const HOOK_SCRIPT = `#!/bin/sh
 ${HOOK_MARKER}
@@ -10,14 +11,21 @@ ${HOOK_MARKER}
 # Installed by: bulki hook install
 # Remove with: bulki hook uninstall
 
-git diff --cached --name-only --diff-filter=ACM | grep -iE '\\.(jpe?g|png|webp|gif|avif)$' | while IFS= read -r img; do
+git diff --cached --name-only -z --diff-filter=ACM | grep -zE '\\.(jpe?g|png|webp|gif|avif)$' | while IFS= read -r -d '' img; do
   if [ -f "$img" ]; then
-    npx @puntoycoma/bulki compress "$img" -d "$(dirname "$img")" -o "." -q 80
+    dir=$(mktemp -d)
+    npx @puntoycoma/bulki compress "$img" -d "$dir" -o "." -q 80 2>/dev/null
+    optimized="$dir/$(basename "$img")"
+    if [ -f "$optimized" ]; then
+      mv "$optimized" "$img"
+    fi
+    rm -rf "$dir"
     git add "$img"
   fi
 done
 
 echo "bulki: done"
+${HOOK_END_MARKER}
 `
 
 export async function installHook(): Promise<void> {
@@ -66,19 +74,19 @@ export async function uninstallHook(): Promise<void> {
 
 		const lines = content.split('\n')
 		const markerIndex = lines.findIndex((l) => l.includes(HOOK_MARKER))
-		if (markerIndex === -1) {
-			console.log('No bulki hook found.')
-			return
-		}
+
+		let endIndex = lines.findIndex((l) => l.includes(HOOK_END_MARKER))
+		if (endIndex === -1) endIndex = lines.length - 1
 
 		const before = lines.slice(0, markerIndex).join('\n')
-		const trimmed = before.trim()
+		const after = lines.slice(endIndex + 1).join('\n')
+		const trimmed = `${before}\n${after}`.trim()
 
 		if (trimmed === '' || trimmed === '#!/bin/sh') {
 			await fs.unlink(hookPath)
 			console.log('bulki pre-commit hook removed.')
 		} else {
-			await fs.writeFile(hookPath, `${before}\n`, { mode: 0o755 })
+			await fs.writeFile(hookPath, `${trimmed}\n`, { mode: 0o755 })
 			console.log('bulki section removed from pre-commit hook.')
 		}
 	} catch {

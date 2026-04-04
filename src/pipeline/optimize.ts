@@ -1,7 +1,7 @@
 import fs from 'node:fs/promises'
 import type { FormatEnum } from 'sharp'
 import sharp from 'sharp'
-import type { CompressOptions, FileResult } from '../types/index.js'
+import type { CompressOptions, FileResult, OptimizeParams } from '../types/index.js'
 import { createDestinationPath } from './destination.js'
 
 export function getFormatOptions(quality: number): Record<string, object> {
@@ -16,7 +16,7 @@ export function getFormatOptions(quality: number): Record<string, object> {
 
 export async function optimizeImage(
 	filePath: string,
-	options: CompressOptions & { sourcePath: string; detectedFormat: string },
+	options: OptimizeParams | (CompressOptions & { sourcePath: string; detectedFormat: string }),
 ): Promise<FileResult> {
 	const start = performance.now()
 
@@ -33,7 +33,9 @@ export async function optimizeImage(
 
 	const formatOptions = getFormatOptions(options.quality)
 
-	let pipeline = sharp(filePath, { animated: format === 'gif' })
+	let pipeline = sharp(filePath, {
+		animated: format === 'gif' || format === 'webp' || format === 'avif',
+	})
 
 	if (options.resize !== undefined) {
 		pipeline = pipeline.resize(options.resize)

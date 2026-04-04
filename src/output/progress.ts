@@ -12,8 +12,5 @@ export function createProgressBar(total: number) {
 			process.stdout.write(`\r${bar}`)
 			if (current === total) process.stdout.write('\n')
 		},
-		done() {
-			process.stdout.write('\n')
-		},
 	}
 }

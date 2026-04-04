@@ -51,3 +51,13 @@ export interface JsonOutput {
 	summary: JsonSummary
 	errors: JsonError[]
 }
+
+export interface OptimizeParams {
+	quality: number
+	format?: string
+	resize?: number
+	destination: string
+	outputFolder: string
+	sourcePath: string
+	detectedFormat: string
+}
