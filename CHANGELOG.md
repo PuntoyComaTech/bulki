@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.0.2](https://github.com/PuntoyComaTech/bulki/compare/bulki-v3.0.1...bulki-v3.0.2) (2026-04-04)
+
+
+### Bug Fixes
+
+* 7 bugs from Opus audit ([39771e7](https://github.com/PuntoyComaTech/bulki/commit/39771e71c414294c59a2c92bddf35a4f77100591))
+
 ## [3.0.1](https://github.com/PuntoyComaTech/bulki/compare/bulki-v3.0.0...bulki-v3.0.1) (2026-04-04)
 
 
