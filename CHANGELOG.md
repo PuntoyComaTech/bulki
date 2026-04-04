@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.0.1](https://github.com/PuntoyComaTech/bulki/compare/bulki-v3.0.0...bulki-v3.0.1) (2026-04-04)
+
+
+### Bug Fixes
+
+* re-trigger release-please for v3.0.0 publish ([920814e](https://github.com/PuntoyComaTech/bulki/commit/920814e0b3b4f1f828e0768aa8dbbc58914e7cb9))
+
 ## [3.0.0](https://github.com/PuntoyComaTech/bulki/compare/bulki-v2.1.0...bulki-v3.0.0) (2026-04-04)
 
 

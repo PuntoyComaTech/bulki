@@ -1,6 +1,6 @@
 {
 	"name": "@puntoycoma/bulki",
-	"version": "3.0.0",
+	"version": "3.0.1",
 	"description": "Bulk image optimizer CLI — compress, resize, convert JPEG/PNG/WebP/AVIF. Interactive mode, MCP server for AI editors, watch mode, git hooks. Free.",
 	"keywords": [
 		"image",
