@@ -318,7 +318,7 @@ gio compress ./photos -q 80
 
 ## Requirements
 
-- Node.js >= 24
+- Node.js >= 20
 
 ## License
 
