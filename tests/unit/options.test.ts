@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { validateOptions } from '../../src/validation/options.js'
+import { parseSize, validateOptions } from '../../src/validation/options.js'
 
 describe('validateOptions', () => {
 	describe('default values', () => {
@@ -145,5 +145,35 @@ describe('validateOptions', () => {
 		it('throws a descriptive error (not "Not implemented") when concurrency is 33', () => {
 			expect(() => validateOptions({ concurrency: 33 })).toThrowError(/concurrency/i)
 		})
+	})
+})
+
+describe('parseSize', () => {
+	it('parses "200kb" as 204800 bytes', () => {
+		expect(parseSize('200kb')).toBe(204800)
+	})
+
+	it('parses "1mb" as 1048576 bytes', () => {
+		expect(parseSize('1mb')).toBe(1048576)
+	})
+
+	it('parses "500b" as 500 bytes', () => {
+		expect(parseSize('500b')).toBe(500)
+	})
+
+	it('parses "200KB" case-insensitively as 204800 bytes', () => {
+		expect(parseSize('200KB')).toBe(204800)
+	})
+
+	it('parses "1MB" case-insensitively as 1048576 bytes', () => {
+		expect(parseSize('1MB')).toBe(1048576)
+	})
+
+	it('throws a descriptive error for invalid format', () => {
+		expect(() => parseSize('invalid')).toThrow()
+	})
+
+	it('throws a descriptive error for unsupported unit "gb"', () => {
+		expect(() => parseSize('1gb')).toThrow()
 	})
 })

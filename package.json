@@ -1,30 +1,65 @@
 {
-	"name": "@PuntoyComaTech/bulki",
-	"version": "2.1.0",
-	"description": "Ultra-fast CLI image optimizer. Compress, resize, and convert images in bulk.",
+	"name": "@puntoycoma/bulki",
+	"version": "2.0.0",
+	"description": "Bulk image optimizer CLI — compress, resize, convert JPEG/PNG/WebP/AVIF. Interactive mode, MCP server for AI editors, watch mode, git hooks. Free.",
 	"keywords": [
 		"image",
 		"optimizer",
 		"compress",
 		"resize",
+		"convert",
 		"webp",
 		"avif",
+		"png",
+		"jpeg",
+		"gif",
 		"sharp",
 		"cli",
-		"bulk"
+		"bulk",
+		"batch",
+		"mcp",
+		"mcp-server",
+		"model-context-protocol",
+		"claude-code",
+		"cursor",
+		"ai-tools",
+		"git-hook",
+		"pre-commit",
+		"watch",
+		"stdin",
+		"pipe",
+		"interactive",
+		"tui",
+		"free",
+		"open-source",
+		"image-compression",
+		"image-optimization",
+		"image-processing",
+		"tinypng-alternative",
+		"imagemin-alternative",
+		"squoosh-alternative",
+		"sharp-cli",
+		"optimize-images",
+		"compress-images",
+		"webp-converter",
+		"avif-converter",
+		"image-resizer",
+		"performance",
+		"web-performance",
+		"lossless",
+		"lossy"
 	],
-	"author": "Gabriel Rubio",
-	"license": "MIT",
+	"author": "PuntoyComaTech",
+	"license": "AGPL-3.0-only",
 	"type": "module",
 	"bin": {
-		"bulki": "./dist/bin/bulki.js",
-		"gio": "./dist/bin/bulki.js"
+		"bulki": "./dist/bin/bulki.js"
 	},
 	"files": [
 		"dist"
 	],
 	"engines": {
-		"node": ">=24"
+		"node": ">=20"
 	},
 	"scripts": {
 		"build": "tsup",
@@ -36,8 +71,10 @@
 	},
 	"dependencies": {
 		"@clack/prompts": "^1.2.0",
+		"@modelcontextprotocol/sdk": "^1.29.0",
 		"commander": "^13.0.0",
-		"sharp": "^0.34.0"
+		"sharp": "^0.34.0",
+		"zod": "^4.3.6"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "^2.0.0",

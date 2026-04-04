@@ -1,12 +1,12 @@
-import fs from 'node:fs/promises'
 import { availableParallelism } from 'node:os'
 import path from 'node:path'
 import * as p from '@clack/prompts'
 import { isCancel } from '@clack/prompts'
+import { installHook, uninstallHook } from '../commands/hook.js'
+import { startWatch } from '../commands/watch.js'
 import { processPool } from '../concurrency/pool.js'
 import { formatSummary } from '../output/results.js'
-import { discoverFiles } from '../pipeline/discover.js'
-import { detectFormat } from '../pipeline/filter.js'
+import { collectImageFiles } from '../pipeline/discover.js'
 import { optimizeImage } from '../pipeline/optimize.js'
 import type { CompressOptions, FileResult } from '../types/index.js'
 
@@ -28,10 +28,11 @@ const PRESETS = {
 	},
 }
 
-export async function runInteractive(): Promise<void> {
-	p.intro('Punto y Coma — bulki')
-
-	// Select mode: preset or custom
+async function collectPresetOptions(): Promise<{
+	format: string | undefined
+	quality: number
+	resize: number | undefined
+}> {
 	const presetKey = await p.select({
 		message: 'Choose a preset or configure manually',
 		options: [
@@ -125,6 +126,12 @@ export async function runInteractive(): Promise<void> {
 		resize = resizeValue
 	}
 
+	return { format, quality, resize }
+}
+
+async function runCompress(): Promise<void> {
+	const { format, quality, resize } = await collectPresetOptions()
+
 	// Path input
 	const inputPath = await p.text({
 		message: 'Path to images (file or directory)',
@@ -141,28 +148,15 @@ export async function runInteractive(): Promise<void> {
 
 	const resolvedPath = path.resolve(inputPath as string)
 
-	let stats: Awaited<ReturnType<typeof fs.stat>>
+	let filePaths: { path: string; format: string }[]
+	let isDirectory: boolean
 	try {
-		stats = await fs.stat(resolvedPath)
+		const collected = await collectImageFiles(resolvedPath, [])
+		filePaths = collected.files
+		isDirectory = collected.isDirectory
 	} catch {
 		p.cancel(`Path not found: ${resolvedPath}`)
 		process.exit(1)
-	}
-
-	// Discover files
-	const filePaths: { path: string; format: string }[] = []
-	if (stats.isDirectory()) {
-		for await (const file of discoverFiles(resolvedPath, [])) {
-			const fmt = await detectFormat(file)
-			if (fmt) {
-				filePaths.push({ path: file, format: fmt })
-			}
-		}
-	} else {
-		const fmt = await detectFormat(resolvedPath)
-		if (fmt) {
-			filePaths.push({ path: resolvedPath, format: fmt })
-		}
 	}
 
 	if (filePaths.length === 0) {
@@ -216,9 +210,10 @@ export async function runInteractive(): Promise<void> {
 		exclude: [],
 		dryRun: false,
 		verbose: false,
+		json: false,
 	}
 
-	const sourcePath = stats.isDirectory() ? resolvedPath : path.dirname(resolvedPath)
+	const sourcePath = isDirectory ? resolvedPath : path.dirname(resolvedPath)
 	const startTime = performance.now()
 	const errors: Error[] = []
 
@@ -254,4 +249,92 @@ export async function runInteractive(): Promise<void> {
 	p.note(summary, 'Results')
 
 	p.outro('Done! Your optimized images are ready.')
+}
+
+async function runWatch(): Promise<void> {
+	const watchDir = await p.text({
+		message: 'Directory to watch',
+		placeholder: './photos',
+		validate(value) {
+			if (!value?.trim()) return 'Path is required'
+		},
+	})
+
+	if (isCancel(watchDir)) {
+		p.cancel('Operation cancelled.')
+		process.exit(0)
+	}
+
+	const { format, quality, resize } = await collectPresetOptions()
+
+	const destInput = await p.text({
+		message: 'Destination directory',
+		placeholder: '.',
+		initialValue: '.',
+	})
+
+	if (isCancel(destInput)) {
+		p.cancel('Operation cancelled.')
+		process.exit(0)
+	}
+
+	const destination = (destInput as string) || '.'
+
+	p.log.info(`Watching ${watchDir}... Press Ctrl+C to stop.`)
+
+	await startWatch(watchDir as string, {
+		quality,
+		format,
+		resize,
+		destination,
+	})
+}
+
+async function runHook(): Promise<void> {
+	const hookAction = await p.select({
+		message: 'Git hook action',
+		options: [
+			{ value: 'install', label: 'Install', hint: 'auto-optimize images on commit' },
+			{ value: 'uninstall', label: 'Uninstall', hint: 'remove the hook' },
+		],
+	})
+
+	if (isCancel(hookAction)) {
+		p.cancel('Operation cancelled.')
+		process.exit(0)
+	}
+
+	if (hookAction === 'install') {
+		await installHook()
+		p.outro('Git hook installed! Images will be auto-optimized on commit.')
+	} else {
+		await uninstallHook()
+		p.outro('Git hook removed.')
+	}
+}
+
+export async function runInteractive(): Promise<void> {
+	p.intro('Punto y Coma — bulki')
+
+	const action = await p.select({
+		message: 'What do you want to do?',
+		options: [
+			{ value: 'compress', label: 'Compress images', hint: 'optimize files or directories' },
+			{ value: 'watch', label: 'Watch directory', hint: 'auto-optimize new images' },
+			{ value: 'hook', label: 'Git hook', hint: 'auto-optimize on commit' },
+		],
+	})
+
+	if (isCancel(action)) {
+		p.cancel('Operation cancelled.')
+		process.exit(0)
+	}
+
+	if (action === 'compress') {
+		await runCompress()
+	} else if (action === 'watch') {
+		await runWatch()
+	} else {
+		await runHook()
+	}
 }

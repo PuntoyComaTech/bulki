@@ -11,12 +11,32 @@ export interface RawOptions {
 	exclude: string[]
 	dryRun: boolean
 	verbose: boolean
+	json: boolean
+	maxSize: string
 }
 
-const VALID_FORMATS = ['jpeg', 'jpg', 'png', 'webp', 'gif', 'avif']
+export function parseSize(input: string): number {
+	const match = /^(\d+(?:\.\d+)?)(b|kb|mb)$/i.exec(input)
+	if (!match) {
+		throw new Error(`Invalid size format: "${input}". Expected format like 200kb, 1mb, 500b`)
+	}
+	const value = Number(match[1])
+	const unit = match[2].toLowerCase()
+	if (unit === 'b') return value
+	if (unit === 'kb') return value * 1024
+	return value * 1024 * 1024
+}
+
+export const VALID_FORMATS = ['jpeg', 'jpg', 'png', 'webp', 'gif', 'avif']
+
+export const DEFAULTS = {
+	quality: 70,
+	destination: '.',
+	outputFolder: 'bulki-output',
+} as const
 
 export function validateOptions(raw: Partial<RawOptions>): CompressOptions {
-	const quality = raw.quality ?? 70
+	const quality = raw.quality ?? DEFAULTS.quality
 	if (typeof quality !== 'number' || !Number.isInteger(quality) || quality < 1 || quality > 100) {
 		throw new Error(`Invalid quality: must be an integer between 1 and 100`)
 	}
@@ -39,15 +59,27 @@ export function validateOptions(raw: Partial<RawOptions>): CompressOptions {
 		throw new Error(`Invalid concurrency: must be between 1 and 32`)
 	}
 
+	let maxSize: number | undefined
+	if (raw.maxSize !== undefined) {
+		maxSize = parseSize(raw.maxSize)
+	}
+
+	const outputFolder = raw.outputFolder ?? DEFAULTS.outputFolder
+	if (outputFolder.includes('/') || outputFolder.includes('\\') || outputFolder.includes('..')) {
+		throw new Error('Invalid outputFolder: must be a simple directory name without path separators')
+	}
+
 	return {
 		quality,
 		format,
 		resize,
-		destination: raw.destination ?? '.',
-		outputFolder: raw.outputFolder ?? 'bulki-output',
+		destination: raw.destination ?? DEFAULTS.destination,
+		outputFolder,
 		concurrency,
 		exclude: raw.exclude ?? [],
 		dryRun: raw.dryRun ?? false,
 		verbose: raw.verbose ?? false,
+		json: raw.json ?? false,
+		maxSize,
 	}
 }

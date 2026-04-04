@@ -35,7 +35,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 24
+          node-version: 20
           cache: npm
           registry-url: https://registry.npmjs.org
 
@@ -44,5 +44,3 @@ jobs:
       - run: npm run build
       - run: npm test
       - run: npm publish --access public --provenance
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

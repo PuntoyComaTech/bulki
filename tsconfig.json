@@ -1,5 +1,5 @@
 {
-	"$schema": "https://json-schema.org/draft/2020-12/schema",
+	"$schema": "https://json.schemastore.org/tsconfig",
 	"compilerOptions": {
 		"target": "ES2024",
 		"module": "Node16",
@@ -8,13 +8,8 @@
 		"outDir": "dist",
 		"rootDir": "src",
 		"strict": true,
-		"esModuleInterop": true,
 		"skipLibCheck": true,
 		"forceConsistentCasingInFileNames": true,
-		"resolveJsonModule": true,
-		"declaration": true,
-		"declarationMap": true,
-		"sourceMap": true,
 		"isolatedModules": true
 	},
 	"include": ["src/**/*.ts"],

@@ -11,6 +11,12 @@ export async function createDestinationPath(
 	},
 ): Promise<string> {
 	const relativePath = path.relative(options.sourcePath, filePath)
+
+	// Prevent path traversal — relative path must not escape the source
+	if (relativePath.startsWith('..') || path.isAbsolute(relativePath)) {
+		throw new Error(`Path traversal detected: ${filePath}`)
+	}
+
 	let outputPath = path.join(path.resolve(options.destination), options.outputFolder, relativePath)
 
 	if (options.toFormat) {
