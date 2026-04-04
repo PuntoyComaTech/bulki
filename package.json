@@ -1,29 +1,57 @@
 {
-	"name": "gab-images-optimizer",
-	"version": "1.0.2",
-	"description": "A versatile command-line utility for image optimization and conversion.",
-	"main": "./src/index.js",
-	"keywords": [],
+	"name": "@PuntoyComaTech/bulki",
+	"version": "2.0.0",
+	"description": "Ultra-fast CLI image optimizer. Compress, resize, and convert images in bulk.",
+	"keywords": [
+		"image",
+		"optimizer",
+		"compress",
+		"resize",
+		"webp",
+		"avif",
+		"sharp",
+		"cli",
+		"bulk"
+	],
 	"author": "Gabriel Rubio",
-	"bin": {
-		"gio": "./bin/index.js"
-	},
 	"license": "MIT",
 	"type": "module",
+	"bin": {
+		"bulki": "./dist/bin/bulki.js",
+		"gio": "./dist/bin/bulki.js"
+	},
+	"files": [
+		"dist"
+	],
+	"engines": {
+		"node": ">=24"
+	},
+	"scripts": {
+		"build": "tsup",
+		"test": "vitest run",
+		"test:watch": "vitest",
+		"lint": "biome check .",
+		"format": "biome format --write .",
+		"prepublishOnly": "npm run lint && npm run test && npm run build"
+	},
 	"dependencies": {
-		"sharp": "0.32.5",
-		"yargs": "17.7.2"
+		"@clack/prompts": "^1.2.0",
+		"commander": "^13.0.0",
+		"sharp": "^0.34.0"
 	},
 	"devDependencies": {
-		"eslint-config-prettier": "^9.0.0",
-		"standard": "^17.1.0"
+		"@biomejs/biome": "^2.0.0",
+		"execa": "^9.0.0",
+		"tsup": "^8.0.0",
+		"typescript": "^5.0.0",
+		"vitest": "^3.0.0"
 	},
 	"repository": {
 		"type": "git",
-		"url": "git+https://github.com/Gabriel1085/gab-optimizer-images.git"
+		"url": "git+https://github.com/PuntoyComaTech/bulki.git"
 	},
 	"bugs": {
-		"url": "https://github.com/Gabriel1085/gab-optimizer-images/issues"
+		"url": "https://github.com/PuntoyComaTech/bulki/issues"
 	},
-	"homepage": "https://github.com/Gabriel1085/gab-optimizer-images/blob/main/README.md"
+	"homepage": "https://github.com/PuntoyComaTech/bulki#readme"
 }
