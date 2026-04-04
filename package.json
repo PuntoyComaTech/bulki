@@ -83,9 +83,13 @@
 		"typescript": "^5.0.0",
 		"vitest": "^3.0.0"
 	},
+	"publishConfig": {
+		"access": "public",
+		"registry": "https://registry.npmjs.org/"
+	},
 	"repository": {
 		"type": "git",
-		"url": "git+https://github.com/PuntoyComaTech/bulki.git"
+		"url": "https://github.com/PuntoyComaTech/bulki.git"
 	},
 	"bugs": {
 		"url": "https://github.com/PuntoyComaTech/bulki/issues"
