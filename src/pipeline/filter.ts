@@ -41,11 +41,15 @@ export async function detectFormat(filePath: string): Promise<string | null> {
 		if (buffer[0] === 0x47 && buffer[1] === 0x49 && buffer[2] === 0x46) return 'gif'
 
 		// AVIF fallback via Sharp (ISOBMFF container makes magic bytes unreliable)
-		try {
-			const metadata = await sharp(filePath).metadata()
-			if (metadata.format === 'heif') return 'avif'
-		} catch {
-			return null
+		// Only try Sharp for potential AVIF files (extension hint)
+		const ext = filePath.split('.').pop()?.toLowerCase()
+		if (ext === 'avif' || ext === 'heic' || ext === 'heif') {
+			try {
+				const metadata = await sharp(filePath).metadata()
+				if (metadata.format === 'heif') return 'avif'
+			} catch {
+				return null
+			}
 		}
 
 		return null

@@ -48,10 +48,15 @@ export async function startWatch(dirPath: string, opts: WatchOptions = {}): Prom
 
 		// Skip if already processing this file
 		if (processing.has(fullPath)) return
+		processing.add(fullPath)
 
 		// Skip files in the output folder to avoid infinite loops
-		const outputDir = path.resolve(destination, outputFolder)
-		if (fullPath.startsWith(outputDir)) return
+		const resolvedDest = destination === '.' ? resolvedPath : path.resolve(destination)
+		const outputDir = path.join(resolvedDest, outputFolder)
+		if (fullPath.startsWith(outputDir)) {
+			processing.delete(fullPath)
+			return
+		}
 
 		// Small delay to let file writes complete
 		await new Promise((r) => setTimeout(r, 100))
@@ -65,9 +70,10 @@ export async function startWatch(dirPath: string, opts: WatchOptions = {}): Prom
 
 		// Check if it's an image
 		const detectedFormat = await detectFormat(fullPath)
-		if (!detectedFormat) return
-
-		processing.add(fullPath)
+		if (!detectedFormat) {
+			processing.delete(fullPath)
+			return
+		}
 
 		try {
 			const result = await optimizeImage(fullPath, {
@@ -99,9 +105,6 @@ export async function startWatch(dirPath: string, opts: WatchOptions = {}): Prom
 		console.log('\nWatch stopped.')
 		process.exit(0)
 	})
-
-	// Keep the process alive
-	await new Promise(() => {})
 }
 
 export const watchCommand = new Command('watch')

@@ -1,21 +1,24 @@
-import fs from 'node:fs/promises'
+import { createRequire } from 'node:module'
 import path from 'node:path'
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { Command } from 'commander'
 import { z } from 'zod'
-import { discoverFiles } from '../pipeline/discover.js'
-import { detectFormat } from '../pipeline/filter.js'
+import { buildJsonOutput } from '../output/results.js'
+import { collectImageFiles } from '../pipeline/discover.js'
 import { optimizeImage } from '../pipeline/optimize.js'
 import type { FileResult } from '../types/index.js'
 import { parseSize } from '../validation/options.js'
+
+const require = createRequire(import.meta.url)
+const { version } = require('../../package.json') as { version: string }
 
 export const mcpCommand = new Command('mcp')
 	.description('Start MCP server for AI editor integration (Claude Code, Cursor, etc.)')
 	.action(async () => {
 		const server = new McpServer({
 			name: 'bulki',
-			version: '3.0.0',
+			version,
 		})
 
 		server.tool(
@@ -36,9 +39,12 @@ export const mcpCommand = new Command('mcp')
 			async (params) => {
 				const resolvedPath = path.resolve(params.path)
 
-				let stats: Awaited<ReturnType<typeof fs.stat>>
+				let filePaths: { path: string; format: string }[]
+				let isDirectory: boolean
 				try {
-					stats = await fs.stat(resolvedPath)
+					const collected = await collectImageFiles(resolvedPath, [])
+					filePaths = collected.files
+					isDirectory = collected.isDirectory
 				} catch {
 					return {
 						content: [
@@ -48,17 +54,6 @@ export const mcpCommand = new Command('mcp')
 							},
 						],
 					}
-				}
-
-				const filePaths: { path: string; format: string }[] = []
-				if (stats.isDirectory()) {
-					for await (const file of discoverFiles(resolvedPath, [])) {
-						const fmt = await detectFormat(file)
-						if (fmt) filePaths.push({ path: file, format: fmt })
-					}
-				} else {
-					const fmt = await detectFormat(resolvedPath)
-					if (fmt) filePaths.push({ path: resolvedPath, format: fmt })
 				}
 
 				if (filePaths.length === 0) {
@@ -72,7 +67,7 @@ export const mcpCommand = new Command('mcp')
 					}
 				}
 
-				const sourcePath = stats.isDirectory() ? resolvedPath : path.dirname(resolvedPath)
+				const sourcePath = isDirectory ? resolvedPath : path.dirname(resolvedPath)
 				const startTime = performance.now()
 				const results: FileResult[] = []
 				const errors: { file: string; message: string }[] = []
@@ -116,30 +111,13 @@ export const mcpCommand = new Command('mcp')
 				}
 
 				const totalDuration = performance.now() - startTime
-				const totalOriginalSize = results.reduce((sum, r) => sum + r.originalSize, 0)
-				const totalNewSize = results.reduce((sum, r) => sum + r.newSize, 0)
-				const totalReduction =
-					totalOriginalSize > 0 ? Math.round((1 - totalNewSize / totalOriginalSize) * 100) : 0
-
-				const output = {
-					files: results.map((r) => ({
-						input: r.inputPath,
-						output: r.outputPath,
-						originalSize: r.originalSize,
-						newSize: r.newSize,
-						reduction: Math.round((1 - r.newSize / r.originalSize) * 100),
-						format: r.format,
-						exceeded: maxSizeBytes !== undefined ? r.newSize > maxSizeBytes : undefined,
-					})),
-					summary: {
-						totalFiles: results.length,
-						totalOriginalSize,
-						totalNewSize,
-						totalReduction,
-						duration: Math.round(totalDuration),
-						errors: errors.length,
-					},
-					errors,
+				const output = buildJsonOutput(results, errors, totalDuration)
+				if (maxSizeBytes !== undefined) {
+					for (const file of output.files) {
+						if (file.newSize > maxSizeBytes) {
+							file.exceeded = true
+						}
+					}
 				}
 
 				return { content: [{ type: 'text' as const, text: JSON.stringify(output, null, 2) }] }

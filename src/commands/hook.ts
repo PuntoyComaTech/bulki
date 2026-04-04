@@ -10,18 +10,9 @@ ${HOOK_MARKER}
 # Installed by: bulki hook install
 # Remove with: bulki hook uninstall
 
-STAGED_IMAGES=$(git diff --cached --name-only --diff-filter=ACM | grep -iE '\\.(jpe?g|png|webp|gif|avif)$')
-
-if [ -z "$STAGED_IMAGES" ]; then
-  exit 0
-fi
-
-echo "bulki: optimizing staged images..."
-
-for img in $STAGED_IMAGES; do
+git diff --cached --name-only --diff-filter=ACM | grep -iE '\\.(jpe?g|png|webp|gif|avif)$' | while IFS= read -r img; do
   if [ -f "$img" ]; then
     npx @puntoycoma/bulki compress "$img" -d "$(dirname "$img")" -o "." -q 80
-    # Replace original with optimized version
     git add "$img"
   fi
 done
@@ -80,9 +71,10 @@ export async function uninstallHook(): Promise<void> {
 			return
 		}
 
-		const before = lines.slice(0, markerIndex).join('\n').trim()
+		const before = lines.slice(0, markerIndex).join('\n')
+		const trimmed = before.trim()
 
-		if (before === '' || before === '#!/bin/sh') {
+		if (trimmed === '' || trimmed === '#!/bin/sh') {
 			await fs.unlink(hookPath)
 			console.log('bulki pre-commit hook removed.')
 		} else {

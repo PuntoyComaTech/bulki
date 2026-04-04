@@ -1,11 +1,9 @@
-import fs from 'node:fs/promises'
 import path from 'node:path'
 import { Command } from 'commander'
 import { processPool } from '../concurrency/pool.js'
 import { createProgressBar } from '../output/progress.js'
 import { buildJsonOutput, formatFileResult, formatSummary } from '../output/results.js'
-import { discoverFiles } from '../pipeline/discover.js'
-import { detectFormat } from '../pipeline/filter.js'
+import { collectImageFiles } from '../pipeline/discover.js'
 import { optimizeImage } from '../pipeline/optimize.js'
 import type { CompressOptions, FileResult } from '../types/index.js'
 import { type RawOptions, validateOptions } from '../validation/options.js'
@@ -34,27 +32,15 @@ export const compressCommand = new Command('compress')
 		}
 
 		const resolvedPath = path.resolve(inputPath)
-		let stats: Awaited<ReturnType<typeof fs.stat>>
+		let filePaths: { path: string; format: string }[]
+		let isDirectory: boolean
 		try {
-			stats = await fs.stat(resolvedPath)
+			const collected = await collectImageFiles(resolvedPath, options.exclude)
+			filePaths = collected.files
+			isDirectory = collected.isDirectory
 		} catch {
 			console.error(`Path not found: ${resolvedPath}`)
 			process.exit(1)
-		}
-
-		const filePaths: { path: string; format: string }[] = []
-		if (stats.isDirectory()) {
-			for await (const file of discoverFiles(resolvedPath, options.exclude)) {
-				const format = await detectFormat(file)
-				if (format) {
-					filePaths.push({ path: file, format })
-				}
-			}
-		} else {
-			const format = await detectFormat(resolvedPath)
-			if (format) {
-				filePaths.push({ path: resolvedPath, format })
-			}
 		}
 
 		if (filePaths.length === 0) {
@@ -68,7 +54,7 @@ export const compressCommand = new Command('compress')
 			return
 		}
 
-		const sourcePath = stats.isDirectory() ? resolvedPath : path.dirname(resolvedPath)
+		const sourcePath = isDirectory ? resolvedPath : path.dirname(resolvedPath)
 		const startTime = performance.now()
 
 		const progress = !options.verbose && !options.json ? createProgressBar(filePaths.length) : null

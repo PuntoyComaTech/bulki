@@ -8,7 +8,8 @@ export function formatFileResult(result: FileResult): string {
 	const filename = path.basename(result.inputPath)
 	const original = formatBytes(result.originalSize)
 	const newSize = formatBytes(result.newSize)
-	const reduction = Math.round((1 - result.newSize / result.originalSize) * 100)
+	const reduction =
+		result.originalSize > 0 ? Math.round((1 - result.newSize / result.originalSize) * 100) : 0
 	const pct = reduction < 0 ? `+${Math.abs(reduction)}%` : `${reduction}%`
 	return `${filename} ${original} -> ${newSize} (${pct})`
 }
@@ -28,7 +29,7 @@ export function buildJsonOutput(
 			output: r.outputPath,
 			originalSize: r.originalSize,
 			newSize: r.newSize,
-			reduction: Math.round((1 - r.newSize / r.originalSize) * 100),
+			reduction: r.originalSize > 0 ? Math.round((1 - r.newSize / r.originalSize) * 100) : 0,
 			format: r.format,
 			duration: r.duration,
 		})),

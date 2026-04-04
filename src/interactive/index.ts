@@ -1,4 +1,3 @@
-import fs from 'node:fs/promises'
 import { availableParallelism } from 'node:os'
 import path from 'node:path'
 import * as p from '@clack/prompts'
@@ -7,8 +6,7 @@ import { installHook, uninstallHook } from '../commands/hook.js'
 import { startWatch } from '../commands/watch.js'
 import { processPool } from '../concurrency/pool.js'
 import { formatSummary } from '../output/results.js'
-import { discoverFiles } from '../pipeline/discover.js'
-import { detectFormat } from '../pipeline/filter.js'
+import { collectImageFiles } from '../pipeline/discover.js'
 import { optimizeImage } from '../pipeline/optimize.js'
 import type { CompressOptions, FileResult } from '../types/index.js'
 
@@ -150,28 +148,15 @@ async function runCompress(): Promise<void> {
 
 	const resolvedPath = path.resolve(inputPath as string)
 
-	let stats: Awaited<ReturnType<typeof fs.stat>>
+	let filePaths: { path: string; format: string }[]
+	let isDirectory: boolean
 	try {
-		stats = await fs.stat(resolvedPath)
+		const collected = await collectImageFiles(resolvedPath, [])
+		filePaths = collected.files
+		isDirectory = collected.isDirectory
 	} catch {
 		p.cancel(`Path not found: ${resolvedPath}`)
 		process.exit(1)
-	}
-
-	// Discover files
-	const filePaths: { path: string; format: string }[] = []
-	if (stats.isDirectory()) {
-		for await (const file of discoverFiles(resolvedPath, [])) {
-			const fmt = await detectFormat(file)
-			if (fmt) {
-				filePaths.push({ path: file, format: fmt })
-			}
-		}
-	} else {
-		const fmt = await detectFormat(resolvedPath)
-		if (fmt) {
-			filePaths.push({ path: resolvedPath, format: fmt })
-		}
 	}
 
 	if (filePaths.length === 0) {
@@ -228,7 +213,7 @@ async function runCompress(): Promise<void> {
 		json: false,
 	}
 
-	const sourcePath = stats.isDirectory() ? resolvedPath : path.dirname(resolvedPath)
+	const sourcePath = isDirectory ? resolvedPath : path.dirname(resolvedPath)
 	const startTime = performance.now()
 	const errors: Error[] = []
 

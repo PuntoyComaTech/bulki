@@ -1,5 +1,6 @@
 import { Command } from 'commander'
 import sharp from 'sharp'
+import { getFormatOptions } from '../pipeline/optimize.js'
 
 export const pipeCommand = new Command('pipe')
 	.description('Read image from stdin, write optimized image to stdout')
@@ -30,13 +31,7 @@ export const pipeCommand = new Command('pipe')
 
 		const outputFormat = format === 'jpg' ? 'jpeg' : format
 
-		const formatOptions: Record<string, object> = {
-			jpeg: { mozjpeg: true, quality },
-			png: { quality },
-			webp: { quality },
-			avif: { quality },
-			gif: {},
-		}
+		const formatOptions = getFormatOptions(quality)
 
 		try {
 			let pipeline = sharp(input)

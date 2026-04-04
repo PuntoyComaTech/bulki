@@ -4,6 +4,16 @@ import sharp from 'sharp'
 import type { CompressOptions, FileResult } from '../types/index.js'
 import { createDestinationPath } from './destination.js'
 
+export function getFormatOptions(quality: number): Record<string, object> {
+	return {
+		jpeg: { mozjpeg: true, quality },
+		png: { quality },
+		webp: { quality },
+		avif: { quality },
+		gif: {},
+	}
+}
+
 export async function optimizeImage(
 	filePath: string,
 	options: CompressOptions & { sourcePath: string; detectedFormat: string },
@@ -21,13 +31,7 @@ export async function optimizeImage(
 		toFormat: options.format,
 	})
 
-	const formatOptions: Partial<Record<keyof FormatEnum, Parameters<sharp.Sharp['toFormat']>[1]>> = {
-		jpeg: { mozjpeg: true, quality: options.quality },
-		png: { quality: options.quality },
-		webp: { quality: options.quality },
-		avif: { quality: options.quality },
-		gif: {},
-	}
+	const formatOptions = getFormatOptions(options.quality)
 
 	let pipeline = sharp(filePath, { animated: format === 'gif' })
 
