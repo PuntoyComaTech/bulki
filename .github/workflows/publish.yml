@@ -1,30 +1,31 @@
-name: Publish to npm
+name: Release & Publish
 
 on:
   push:
-    tags:
-      - 'v*'
+    branches: [main]
+
+permissions:
+  contents: write
+  pull-requests: write
 
 jobs:
-  ci:
-    name: Lint, Test & Build
+  release-please:
+    name: Release Please
     runs-on: ubuntu-latest
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
     steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
+      - uses: google-github-actions/release-please-action@v4
+        id: release
         with:
-          node-version: 24
-          cache: npm
-
-      - run: npm ci
-      - run: npm run lint
-      - run: npm test
-      - run: npm run build
+          token: ${{ secrets.GITHUB_TOKEN }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
 
   publish:
     name: Publish to npm
-    needs: ci
+    needs: release-please
+    if: ${{ needs.release-please.outputs.release_created == 'true' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -39,23 +40,9 @@ jobs:
           registry-url: https://registry.npmjs.org
 
       - run: npm ci
+      - run: npm run lint
+      - run: npm test
       - run: npm run build
       - run: npm publish --access public --provenance
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-
-  release:
-    name: GitHub Release
-    needs: [ci, publish]
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Create GitHub Release
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release create ${GITHUB_REF#refs/tags/} --generate-notes
