@@ -1,5 +1,5 @@
 {
-	"name": "@puntoycoma/bulki",
+	"name": "@PuntoyComaTech/bulki",
 	"version": "2.0.0",
 	"description": "Ultra-fast CLI image optimizer. Compress, resize, and convert images in bulk.",
 	"keywords": [
@@ -48,10 +48,10 @@
 	},
 	"repository": {
 		"type": "git",
-		"url": "git+https://github.com/puntoycoma/bulki.git"
+		"url": "git+https://github.com/PuntoyComaTech/bulki.git"
 	},
 	"bugs": {
-		"url": "https://github.com/puntoycoma/bulki/issues"
+		"url": "https://github.com/PuntoyComaTech/bulki/issues"
 	},
-	"homepage": "https://github.com/puntoycoma/bulki#readme"
+	"homepage": "https://github.com/PuntoyComaTech/bulki#readme"
 }

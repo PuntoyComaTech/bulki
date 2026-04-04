@@ -19,13 +19,8 @@ const PRESETS = {
 	},
 	social: {
 		label: 'Social media',
-		hint: 'JPEG, quality 85, max 1080px',
-		options: { format: 'jpeg', quality: 85, resize: 1080 },
-	},
-	maxCompress: {
-		label: 'Maximum compression',
-		hint: 'AVIF, quality 50, max 1920px',
-		options: { format: 'avif', quality: 50, resize: 1920 },
+		hint: 'PNG, quality 85, max 1080px — lossless colors',
+		options: { format: 'png', quality: 85, resize: 1080 },
 	},
 	custom: {
 		label: 'Custom settings',
@@ -35,7 +30,7 @@ const PRESETS = {
 }
 
 export async function runInteractive(): Promise<void> {
-	p.intro('bulki — Image Optimizer')
+	p.intro('Punto y Coma — bulki')
 
 	// Select mode: preset or custom
 	const presetKey = await p.select({
@@ -43,7 +38,6 @@ export async function runInteractive(): Promise<void> {
 		options: [
 			{ value: 'web', label: PRESETS.web.label, hint: PRESETS.web.hint },
 			{ value: 'social', label: PRESETS.social.label, hint: PRESETS.social.hint },
-			{ value: 'maxCompress', label: PRESETS.maxCompress.label, hint: PRESETS.maxCompress.hint },
 			{ value: 'custom', label: PRESETS.custom.label, hint: PRESETS.custom.hint },
 		],
 	})
