@@ -1,64 +1,113 @@
-# gab-images-optimizer
+# @puntoycoma/bulki
 
-**Version:** 1.0.2
+Ultra-fast CLI image optimizer. Compress, resize, and convert images in bulk.
 
-**Author:** Gabriel Rubio
-
-## Description
-
-**gab-images-optimizer** is a versatile command-line utility for image optimization and conversion. It allows you to optimize one or more images in a specified folder using various options, including resizing, quality adjustment, output format selection, and specifying a destination folder for the optimized images. **It will maintain the same folder structure as the original.**
+Built on [Sharp](https://sharp.pixelplumbing.com/) (libvips). Only 2 production dependencies.
 
 ## Installation
 
-To use **gab-images-optimizer**, you can install it globally using npm:
-
 ```bash
-npm install -g gab-images-optimizer
+npm install -g @puntoycoma/bulki
 ```
+
+> Migrating from `gab-images-optimizer`? The `gio` command still works as an alias.
 
 ## Usage
 
-After installation, you can use the CLI with the following command:
-
 ```bash
-gio compress route [options]
+bulki compress <path> [options]
 ```
 
 ### Options
 
--   `-r, --resize <width>`: Resize images with a maximum width in pixels.
--   `-q, --quality <quality>`: Set the quality of the optimized images (default is 70).
--   `-f, --format <format>`: Specify the output format for the optimized images (e.g., png, jpg, webp).
--   `-d, --destination <path>`: Specify the destination path to create the new images folder (default is the current folder where the program is executed).
+| Flag | Alias | Description | Default |
+|------|-------|-------------|---------|
+| `--quality <n>` | `-q` | Output quality (1-100) | `70` |
+| `--format <fmt>` | `-f` | Convert to format: `jpeg`, `png`, `webp`, `gif`, `avif` | original |
+| `--resize <width>` | `-r` | Max width in pixels | original |
+| `--destination <path>` | `-d` | Output base directory | `.` |
+| `--output-folder <name>` | `-o` | Output folder name | `bulki-output` |
+| `--concurrency <n>` | | Parallel file limit (1-32) | auto |
+| `--exclude <patterns...>` | | Glob patterns to skip | none |
+| `--dry-run` | | Preview without writing files | `false` |
+| `--verbose` | | Show per-file details | `false` |
 
 ## Examples
 
-1. Optimize images from actual route with default options, just add a point in the end:
+Compress all images in current directory:
 
 ```bash
-gio compress .
+bulki compress .
 ```
 
-2. Optimize images in a specific folder (`../test/folder_name/`) with default settings:
+Compress a folder with quality 80 and convert to WebP:
 
 ```bash
-gio compress ../test/folder_name/
+bulki compress ./photos -q 80 -f webp
 ```
 
-3. Optimize just one image, quality 70 and new format webp and saving where the command is being executed:
+Compress a single image with resize:
 
 ```bash
-gio compress ../test/image_name.png/ -q 70 -f webp
+bulki compress ./photo.png -r 1920 -q 85
 ```
 
-4. Optimize images in the actual folder, sending all of them (folders and images) to a specific route with a rezise of 400px taking width as base:
+Preview what would be processed:
 
 ```bash
-gio compress ../test/folder_name/ --quality 60 --format jpg --resize 400 --destination ../../documents/new_folder/
+bulki compress ./photos --dry-run
 ```
 
-or
+Compress with custom output location:
 
 ```bash
-gio compress ../test/folder_name/ -q 60 -f jpg -r 400 -d ../../documents/new_folder/
+bulki compress ./photos -d ./output -o optimized
 ```
+
+Exclude a directory:
+
+```bash
+bulki compress ./assets --exclude thumbnails
+```
+
+## Output
+
+Optimized images are saved to `<destination>/bulki-output/` preserving the original folder structure.
+
+```
+photos/
+  vacation/
+    beach.jpg
+    sunset.png
+
+bulki-output/
+  vacation/
+    beach.jpg
+    sunset.png
+```
+
+## Supported formats
+
+| Format | Compress | Convert to | Convert from |
+|--------|----------|------------|--------------|
+| JPEG | yes | yes | yes |
+| PNG | yes | yes | yes |
+| WebP | yes | yes | yes |
+| GIF | yes | yes | yes |
+| AVIF | yes | yes | yes |
+
+## Backward compatibility
+
+The `gio` command from the original `gab-images-optimizer` package continues to work:
+
+```bash
+gio compress ./photos -q 80
+```
+
+## Requirements
+
+- Node.js >= 24
+
+## License
+
+MIT
