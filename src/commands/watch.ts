@@ -38,8 +38,16 @@ export async function startWatch(dirPath: string, opts: WatchOptions = {}): Prom
 	console.log(`Watching ${resolvedPath} for new images...`)
 	console.log('Press Ctrl+C to stop.\n')
 
+	if (process.platform === 'linux') {
+		console.log(
+			'Note: recursive watching may not work on all Linux systems. Use macOS or Windows for reliable subdirectory monitoring.',
+		)
+	}
+
 	// Track processed files to avoid duplicates (fs.watch can fire multiple events)
 	const processing = new Set<string>()
+	let activeJobs = 0
+	const maxJobs = 4
 
 	// Use fs.watch with recursive option
 	const watcher = fs.watch(resolvedPath, { recursive: true }, async (_eventType, filename) => {
@@ -50,6 +58,12 @@ export async function startWatch(dirPath: string, opts: WatchOptions = {}): Prom
 		// Skip if already processing this file
 		if (processing.has(fullPath)) return
 		processing.add(fullPath)
+
+		// Concurrency limit
+		while (activeJobs >= maxJobs) {
+			await new Promise((r) => setTimeout(r, 100))
+		}
+		activeJobs++
 
 		// Skip files in the output folder to avoid infinite loops
 		const resolvedDest = destination === '.' ? resolvedPath : path.resolve(destination)
@@ -96,6 +110,7 @@ export async function startWatch(dirPath: string, opts: WatchOptions = {}): Prom
 		} catch (err) {
 			console.error(`Error processing ${filename}: ${(err as Error).message}`)
 		} finally {
+			activeJobs--
 			// Remove from processing after a delay to debounce
 			setTimeout(() => processing.delete(fullPath), 1000)
 		}

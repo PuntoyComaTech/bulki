@@ -1,9 +1,11 @@
 import { createRequire } from 'node:module'
+import { availableParallelism } from 'node:os'
 import path from 'node:path'
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { Command } from 'commander'
 import { z } from 'zod'
+import { processPool } from '../concurrency/pool.js'
 import { buildJsonOutput } from '../output/results.js'
 import { collectImageFiles } from '../pipeline/discover.js'
 import { detectFormat } from '../pipeline/filter.js'
@@ -87,7 +89,6 @@ export const mcpCommand = new Command('mcp')
 
 				const sourcePath = isDirectory ? resolvedPath : path.dirname(resolvedPath)
 				const startTime = performance.now()
-				const results: FileResult[] = []
 				const errors: { file: string; message: string }[] = []
 
 				let maxSizeBytes: number | undefined
@@ -106,27 +107,34 @@ export const mcpCommand = new Command('mcp')
 					}
 				}
 
-				for (const file of filePaths) {
-					try {
-						const result = await optimizeImage(file.path, {
-							quality: params.quality,
-							format: params.format,
-							resize: params.resize,
-							destination: params.destination,
-							outputFolder: params.outputFolder,
-							concurrency: 1,
-							exclude: [],
-							dryRun: false,
-							verbose: false,
-							json: false,
-							sourcePath,
-							detectedFormat: file.format,
-						})
-						results.push(result)
-					} catch (err) {
-						errors.push({ file: file.path, message: (err as Error).message })
-					}
-				}
+				const processedResults = await processPool(
+					filePaths,
+					async (file) => {
+						try {
+							const result = await optimizeImage(file.path, {
+								quality: params.quality,
+								format: params.format,
+								resize: params.resize,
+								destination: params.destination,
+								outputFolder: params.outputFolder,
+								concurrency: 1,
+								exclude: [],
+								dryRun: false,
+								verbose: false,
+								json: false,
+								sourcePath,
+								detectedFormat: file.format,
+							})
+							return result
+						} catch (err) {
+							errors.push({ file: file.path, message: (err as Error).message })
+							return null
+						}
+					},
+					Math.min(availableParallelism(), 8),
+				)
+
+				const results = processedResults.filter((r): r is FileResult => r !== null)
 
 				const totalDuration = performance.now() - startTime
 				const output = buildJsonOutput(results, errors, totalDuration)
