@@ -1,5 +1,13 @@
 # Changelog
 
+## [3.0.3](https://github.com/PuntoyComaTech/bulki/compare/bulki-v3.0.2...bulki-v3.0.3) (2026-11-12)
+
+
+### Bug Fixes
+
+* **interactive:** Esc on main menu no longer exits; validate output folder permissions; skip unreadable subfolders ([fe06279](https://github.com/PuntoyComaTech/bulki/commit/fe06279b8e8d3ed8938463ba99d5fa436385a1d8))
+* reliable interactive mode, clear output flag, safer pipeline ([0db3d54](https://github.com/PuntoyComaTech/bulki/commit/0db3d5418fd64a351730cb4c0145cf6c0e9b2af9))
+
 ## [3.0.2](https://github.com/PuntoyComaTech/bulki/compare/bulki-v3.0.1...bulki-v3.0.2) (2026-04-04)
 
 
