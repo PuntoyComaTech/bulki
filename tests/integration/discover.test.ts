@@ -55,6 +55,23 @@ describe('discoverFiles', () => {
 		expect(files.length).toBeGreaterThan(0)
 	})
 
+	it.runIf(process.platform !== 'win32' && process.getuid?.() !== 0)(
+		'skips an unreadable subfolder instead of failing the whole scan',
+		async () => {
+			tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'bulki-perm-'))
+			await fs.writeFile(path.join(tempDir, 'ok.jpg'), '')
+			await fs.mkdir(path.join(tempDir, 'locked'))
+			await fs.writeFile(path.join(tempDir, 'locked', 'hidden.jpg'), '')
+			await fs.chmod(path.join(tempDir, 'locked'), 0o000)
+			try {
+				const files = await collectAsync(discoverFiles(tempDir))
+				expect(files.map((f) => path.basename(f))).toEqual(['ok.jpg'])
+			} finally {
+				await fs.chmod(path.join(tempDir, 'locked'), 0o755)
+			}
+		},
+	)
+
 	it('yields nothing for an empty directory', async () => {
 		tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'bulki-empty-'))
 		const files = await collectAsync(discoverFiles(tempDir))

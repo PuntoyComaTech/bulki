@@ -18,7 +18,11 @@ export async function* discoverFiles(
 		const fullPath = path.resolve(dirPath, entry.name)
 		if (entry.isDirectory()) {
 			if (exclude.includes(entry.name) || entry.name === DEFAULT_OUTPUT_FOLDER) continue
-			yield* discoverFiles(fullPath, exclude)
+			try {
+				yield* discoverFiles(fullPath, exclude)
+			} catch {
+				// An unreadable subfolder (permissions, removed mid-scan) must not abort the whole scan
+			}
 		} else if (entry.isFile()) {
 			yield fullPath
 		}

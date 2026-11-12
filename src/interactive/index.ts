@@ -250,6 +250,24 @@ function validateOutput(output: string, scan: Scan): string | undefined {
 	if (scan.inputs.some((i) => fs.statSync(i).isFile() && samePath(i, output))) {
 		return 'That is one of the source images'
 	}
+	return checkWritable(output)
+}
+
+/** The folder (or the closest existing parent, since it will be created) must be writable. */
+function checkWritable(dir: string): string | undefined {
+	let existing = dir
+	while (!fs.existsSync(existing)) {
+		const parent = path.dirname(existing)
+		if (parent === existing) break
+		existing = parent
+	}
+	try {
+		if (!fs.statSync(existing).isDirectory())
+			return `${displayPath(existing)} is a file, not a folder`
+		fs.accessSync(existing, fs.constants.W_OK)
+	} catch {
+		return `You don't have permission to write in ${displayPath(existing)} — choose another folder`
+	}
 }
 
 async function chooseOutput(scan: Scan, current?: string): Promise<string | Back> {
@@ -600,7 +618,12 @@ export async function runInteractive(prefill?: string[]): Promise<void> {
 					],
 				}),
 			)
-			if (action === BACK || action === 'quit') quit()
+			if (action === 'quit') quit()
+			if (action === BACK) {
+				// Esc on the main menu must not close bulki — leaving is always explicit
+				p.log.info('To leave bulki choose "Exit" or press Ctrl+C.')
+				continue
+			}
 		}
 
 		try {
