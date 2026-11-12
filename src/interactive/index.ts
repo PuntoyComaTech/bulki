@@ -42,14 +42,14 @@ function quit(message = 'Bye!'): never {
 }
 
 /** Await a clack prompt. Esc → BACK, Ctrl+C → quit. */
-async function ask<T>(prompt: Promise<T | symbol>): Promise<T | Back> {
+async function ask<T>(prompt: Promise<T>): Promise<Exclude<T, symbol> | Back> {
 	ctrlCPressed = false
 	const value = await prompt
 	if (p.isCancel(value)) {
 		if (ctrlCPressed) quit()
 		return BACK
 	}
-	return value as T
+	return value as Exclude<T, symbol>
 }
 
 // ─── settings ───────────────────────────────────────────────────────────────
