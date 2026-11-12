@@ -1,0 +1,32 @@
+version: 2
+updates:
+  # npm dependencies: one weekly PR with all minor/patch updates grouped,
+  # majors as separate PRs (they may need code changes). Security fixes
+  # are opened immediately, outside this schedule.
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 10
+    commit-message:
+      prefix: fix(deps)
+      prefix-development: chore(deps)
+    groups:
+      production:
+        dependency-type: production
+        update-types: [minor, patch]
+      development:
+        dependency-type: development
+        update-types: [minor, patch]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    commit-message:
+      prefix: ci
+    groups:
+      actions:
+        patterns: ['*']

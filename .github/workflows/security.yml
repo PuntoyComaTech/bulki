@@ -1,0 +1,60 @@
+name: Security
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    # Every day at 09:00 UTC: new advisories appear without any code change
+    - cron: '0 9 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit-repo:
+    name: npm audit (repo)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      # Production dependencies fail on any severity; dev tooling only on high/critical
+      - run: npm audit --omit=dev --audit-level=low
+      - run: npm audit --audit-level=high
+
+  audit-published:
+    # What users actually get: a clean install of the latest published version
+    name: npm audit (published package)
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - name: Install @puntoycoma/bulki@latest and audit it
+        run: |
+          mkdir published && cd published
+          npm init -y > /dev/null
+          npm install @puntoycoma/bulki@latest --ignore-scripts
+          npm ls @puntoycoma/bulki
+          npm audit --audit-level=low
+
+  osv:
+    name: OSV scanner
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install osv-scanner (pinned, checksum-verified)
+        env:
+          OSV_VERSION: v2.7.1
+        run: |
+          base="https://github.com/google/osv-scanner/releases/download/$OSV_VERSION"
+          curl -fsSLO "$base/osv-scanner_linux_amd64"
+          curl -fsSLO "$base/osv-scanner_SHA256SUMS"
+          grep ' osv-scanner_linux_amd64$' osv-scanner_SHA256SUMS | sha256sum -c -
+          chmod +x osv-scanner_linux_amd64
+      - run: ./osv-scanner_linux_amd64 scan --lockfile package-lock.json
