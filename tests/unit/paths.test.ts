@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
+import { pathToFileURL } from 'node:url'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import {
 	cleanPathInput,
@@ -26,7 +27,8 @@ describe('cleanPathInput', () => {
 	})
 
 	it('converts file:// URLs', () => {
-		expect(cleanPathInput('file:///tmp/My%20Photos')).toBe(path.resolve('/tmp/My Photos'))
+		const target = path.resolve('/tmp/My Photos')
+		expect(cleanPathInput(pathToFileURL(target).href)).toBe(target)
 	})
 
 	it('expands ~', () => {
