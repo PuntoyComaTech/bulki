@@ -1,63 +1,58 @@
 import fs from 'node:fs/promises'
 import sharp from 'sharp'
 
+/** Detected as HEIC/HEIF (e.g. iPhone photos): libvips prebuilt binaries can't decode HEVC. */
+export const UNSUPPORTED = 'unsupported'
+
+const PNG_MAGIC = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
+const AVIF_BRANDS = new Set(['avif', 'avis'])
+const HEIF_BRANDS = new Set(['heic', 'heix', 'hevc', 'hevx', 'heim', 'heis', 'mif1', 'msf1'])
+
+/**
+ * Identify an image by its magic bytes, never by extension.
+ * Returns 'jpeg' | 'png' | 'webp' | 'gif' | 'avif', UNSUPPORTED for HEIC/HEIF,
+ * or null when the file is not an image.
+ */
 export async function detectFormat(filePath: string): Promise<string | null> {
+	const buffer = Buffer.alloc(12)
 	try {
 		const handle = await fs.open(filePath, 'r')
-		const buffer = Buffer.alloc(12)
 		try {
-			await handle.read(buffer, 0, 12, 0)
+			const { bytesRead } = await handle.read(buffer, 0, 12, 0)
+			if (bytesRead < 4) return null
 		} finally {
 			await handle.close()
 		}
-
-		// JPEG
-		if (buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) return 'jpeg'
-		// PNG
-		if (
-			buffer[0] === 0x89 &&
-			buffer[1] === 0x50 &&
-			buffer[2] === 0x4e &&
-			buffer[3] === 0x47 &&
-			buffer[4] === 0x0d &&
-			buffer[5] === 0x0a &&
-			buffer[6] === 0x1a &&
-			buffer[7] === 0x0a
-		)
-			return 'png'
-		// WebP (RIFF....WEBP)
-		if (
-			buffer[0] === 0x52 &&
-			buffer[1] === 0x49 &&
-			buffer[2] === 0x46 &&
-			buffer[3] === 0x46 &&
-			buffer[8] === 0x57 &&
-			buffer[9] === 0x45 &&
-			buffer[10] === 0x42 &&
-			buffer[11] === 0x50
-		)
-			return 'webp'
-		// GIF
-		if (buffer[0] === 0x47 && buffer[1] === 0x49 && buffer[2] === 0x46) return 'gif'
-
-		// AVIF fallback via Sharp (ISOBMFF container makes magic bytes unreliable)
-		// Only try Sharp for potential AVIF files (extension hint)
-		const ext = filePath.split('.').pop()?.toLowerCase()
-		if (ext === 'avif' || ext === 'heic' || ext === 'heif') {
-			try {
-				const metadata = await sharp(filePath).metadata()
-				if (metadata.format === 'heif') return 'avif'
-			} catch {
-				return null
-			}
-		}
-
-		return null
 	} catch {
 		return null
 	}
+
+	if (buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) return 'jpeg'
+	if (buffer.subarray(0, 8).equals(PNG_MAGIC)) return 'png'
+	if (buffer.toString('latin1', 0, 4) === 'RIFF' && buffer.toString('latin1', 8, 12) === 'WEBP')
+		return 'webp'
+	if (buffer.toString('latin1', 0, 3) === 'GIF') return 'gif'
+
+	// ISOBMFF container: [box size][ftyp][major brand]
+	if (buffer.toString('latin1', 4, 8) === 'ftyp') {
+		const brand = buffer.toString('latin1', 8, 12)
+		if (AVIF_BRANDS.has(brand)) return 'avif'
+		if (HEIF_BRANDS.has(brand)) {
+			// `mif1` may wrap AV1 too — ask libvips which codec it really is
+			try {
+				const meta = await sharp(filePath).metadata()
+				if (meta.format === 'heif' && meta.compression === 'av1') return 'avif'
+			} catch {
+				// header unreadable without the HEVC codec
+			}
+			return UNSUPPORTED
+		}
+	}
+
+	return null
 }
 
 export async function isImage(filePath: string): Promise<boolean> {
-	return (await detectFormat(filePath)) !== null
+	const fmt = await detectFormat(filePath)
+	return fmt !== null && fmt !== UNSUPPORTED
 }

@@ -1,341 +1,647 @@
-import { availableParallelism } from 'node:os'
+import { spawn } from 'node:child_process'
+import fs from 'node:fs'
 import path from 'node:path'
+import readline from 'node:readline'
 import * as p from '@clack/prompts'
-import { isCancel } from '@clack/prompts'
-import { installHook, uninstallHook } from '../commands/hook.js'
+import { HookError, installHook, uninstallHook } from '../commands/hook.js'
 import { startWatch } from '../commands/watch.js'
-import { processPool } from '../concurrency/pool.js'
-import { formatSummary } from '../output/results.js'
-import { collectImageFiles } from '../pipeline/discover.js'
-import { optimizeImage } from '../pipeline/optimize.js'
-import type { CompressOptions, FileResult } from '../types/index.js'
-import { DEFAULTS } from '../validation/options.js'
+import { formatBytes } from '../output/format-bytes.js'
+import { UNSUPPORTED } from '../pipeline/filter.js'
+import { runBatch } from '../pipeline/optimize.js'
+import {
+	cleanPathInput,
+	displayPath,
+	isInside,
+	parsePathInput,
+	samePath,
+} from '../pipeline/paths.js'
+import { assignOutputs, type PlanError, type Scan, scanInputs } from '../pipeline/plan.js'
+import type { EncodeSettings, OutputFormat } from '../types/index.js'
+import { DEFAULT_OUTPUT_FOLDER, defaultConcurrency } from '../validation/options.js'
+
+/*
+ * Interactive mode.
+ *
+ * Every screen is a step in a small state machine:
+ *   Esc     → go back one step (never loses what you already chose)
+ *   Ctrl+C  → quit bulki
+ * Wrong input (a path that doesn't exist, a bad number) is rejected in place,
+ * so you can fix it without starting over.
+ */
+
+// ─── prompt helpers ─────────────────────────────────────────────────────────
+
+const BACK = Symbol('back')
+type Back = typeof BACK
+
+let ctrlCPressed = false
+
+function quit(message = 'Bye!'): never {
+	p.outro(message)
+	process.exit(0)
+}
+
+/** Await a clack prompt. Esc → BACK, Ctrl+C → quit. */
+async function ask<T>(prompt: Promise<T | symbol>): Promise<T | Back> {
+	ctrlCPressed = false
+	const value = await prompt
+	if (p.isCancel(value)) {
+		if (ctrlCPressed) quit()
+		return BACK
+	}
+	return value as T
+}
+
+// ─── settings ───────────────────────────────────────────────────────────────
 
 const PRESETS = {
 	web: {
 		label: 'Web optimized',
-		hint: 'WebP, quality 80, max 1920px',
-		options: { format: 'webp', quality: 80, resize: 1920 },
+		hint: 'WebP, quality 80, max 1920px wide',
+		settings: { format: 'webp', quality: 80, resize: 1920 } as EncodeSettings,
 	},
 	social: {
 		label: 'Social media',
-		hint: 'PNG, quality 85, max 1080px — lossless colors',
-		options: { format: 'png', quality: 85, resize: 1080 },
+		hint: 'JPEG, quality 85, max 1080px wide',
+		settings: { format: 'jpeg', quality: 85, resize: 1080 } as EncodeSettings,
 	},
-	custom: {
-		label: 'Custom settings',
-		hint: 'Choose each option manually',
-		options: null,
+	keep: {
+		label: 'Just make them smaller',
+		hint: 'same format and size, quality 80',
+		settings: { quality: 80 } as EncodeSettings,
 	},
+} as const
+
+type PresetKey = keyof typeof PRESETS | 'custom'
+
+function describeSettings(s: EncodeSettings): string {
+	const fmt = s.format ? s.format.toUpperCase() : 'same format'
+	const size = s.resize ? `max ${s.resize}px wide` : 'original size'
+	return `${fmt}, quality ${s.quality}, ${size}`
 }
 
-async function collectPresetOptions(): Promise<{
-	format: string | undefined
-	quality: number
-	resize: number | undefined
-}> {
-	const presetKey = await p.select({
-		message: 'Choose a preset or configure manually',
-		options: [
-			{ value: 'web', label: PRESETS.web.label, hint: PRESETS.web.hint },
-			{ value: 'social', label: PRESETS.social.label, hint: PRESETS.social.hint },
-			{ value: 'custom', label: PRESETS.custom.label, hint: PRESETS.custom.hint },
-		],
-	})
+/** Preset menu, plus the custom sub-flow. Esc inside custom goes back one question. */
+async function chooseSettings(current?: { preset: PresetKey; settings: EncodeSettings }) {
+	let highlighted: PresetKey = current?.preset ?? 'web'
+	const customDraft = current?.preset === 'custom' ? current.settings : undefined
+	while (true) {
+		const preset = await ask(
+			p.select<PresetKey>({
+				message: 'How do you want to optimize them?',
+				initialValue: highlighted,
+				options: [
+					...Object.entries(PRESETS).map(([value, preset]) => ({
+						value: value as PresetKey,
+						label: preset.label,
+						hint: preset.hint,
+					})),
+					{ value: 'custom', label: 'Custom settings', hint: 'choose format, quality and size' },
+				],
+			}),
+		)
+		if (preset === BACK) return BACK
+		if (preset !== 'custom') return { preset, settings: { ...PRESETS[preset].settings } }
 
-	if (isCancel(presetKey)) {
-		p.cancel('Operation cancelled.')
-		process.exit(0)
+		const custom = await chooseCustom(customDraft)
+		if (custom !== BACK) return { preset, settings: custom }
+		// Esc on the first custom question → back to the preset list, still on "Custom"
+		highlighted = 'custom'
 	}
+}
 
-	let format: string | undefined
-	let quality = DEFAULTS.quality
-	let resize: number | undefined
-
-	if (presetKey !== 'custom') {
-		const preset = PRESETS[presetKey as keyof typeof PRESETS]
-		const opts = preset.options as { format: string; quality: number; resize: number }
-		format = opts.format
-		quality = opts.quality
-		resize = opts.resize
-	} else {
-		// Custom mode
-		const settings = await p.group(
-			{
-				format: () =>
-					p.select({
-						message: 'Output format',
-						options: [
-							{ value: 'original', label: 'Keep original', hint: 'no conversion' },
-							{ value: 'webp', label: 'WebP', hint: 'best compression/quality ratio' },
-							{ value: 'avif', label: 'AVIF', hint: 'smallest files, slower encoding' },
-							{ value: 'jpeg', label: 'JPEG', hint: 'universal compatibility' },
-							{ value: 'png', label: 'PNG', hint: 'lossless' },
-						],
-					}),
-				quality: () =>
+async function chooseCustom(previous?: EncodeSettings): Promise<EncodeSettings | Back> {
+	const s: EncodeSettings = { quality: 80, ...previous }
+	let step = 0
+	while (step < 3) {
+		if (step === 0) {
+			const format = await ask(
+				p.select<OutputFormat | 'original'>({
+					message: 'Output format',
+					initialValue: s.format ?? 'original',
+					options: [
+						{ value: 'original', label: 'Keep original format' },
+						{ value: 'webp', label: 'WebP', hint: 'best size/quality for the web' },
+						{ value: 'avif', label: 'AVIF', hint: 'smallest files, slower' },
+						{ value: 'jpeg', label: 'JPEG', hint: 'works everywhere' },
+						{ value: 'png', label: 'PNG', hint: 'keeps transparency' },
+					],
+				}),
+			)
+			if (format === BACK) return BACK
+			s.format = format === 'original' ? undefined : format
+			step++
+		} else if (step === 1) {
+			const quality = await ask(
+				p.text({
+					message: 'Quality (1-100)',
+					placeholder: `${s.quality}  — lower = smaller files`,
+					defaultValue: String(s.quality),
+					validate(value) {
+						if (!value?.trim()) return
+						const n = Number(value.trim())
+						if (!Number.isInteger(n) || n < 1 || n > 100)
+							return 'Enter a whole number between 1 and 100'
+					},
+				}),
+			)
+			if (quality === BACK) {
+				step--
+				continue
+			}
+			s.quality = Number(quality)
+			step++
+		} else {
+			const presets = ['none', '3840', '2560', '1920', '1080', '800']
+			const current = s.resize === undefined ? 'none' : String(s.resize)
+			const resize = await ask(
+				p.select<string>({
+					message: 'Resize? (images are only made smaller, never bigger)',
+					initialValue: presets.includes(current) ? current : 'custom',
+					options: [
+						{ value: 'none', label: 'Keep original size' },
+						{ value: '3840', label: '3840px wide', hint: '4K' },
+						{ value: '2560', label: '2560px wide', hint: 'retina screens' },
+						{ value: '1920', label: '1920px wide', hint: 'full HD' },
+						{ value: '1080', label: '1080px wide', hint: 'social media' },
+						{ value: '800', label: '800px wide', hint: 'thumbnails' },
+						{ value: 'custom', label: 'Other width…' },
+					],
+				}),
+			)
+			if (resize === BACK) {
+				step--
+				continue
+			}
+			if (resize === 'custom') {
+				const width = await ask(
 					p.text({
-						message: 'Quality (1-100)',
-						placeholder: String(DEFAULTS.quality),
-						initialValue: String(DEFAULTS.quality),
+						message: 'Max width in pixels',
+						placeholder: '1200',
+						initialValue: s.resize && !presets.includes(String(s.resize)) ? String(s.resize) : '',
 						validate(value) {
-							const n = parseInt(value ?? '', 10)
-							if (Number.isNaN(n) || n < 1 || n > 100) return 'Must be between 1 and 100'
+							const n = Number(value?.trim())
+							if (!Number.isInteger(n) || n <= 0) return 'Enter a whole number greater than 0'
 						},
 					}),
-				resize: () =>
-					p.select({
-						message: 'Resize images?',
-						options: [
-							{ value: 'none', label: 'No resize', hint: 'keep original dimensions' },
-							{ value: '1920', label: '1920px', hint: 'Full HD width' },
-							{ value: '1080', label: '1080px', hint: 'HD width' },
-							{ value: '800', label: '800px', hint: 'web thumbnails' },
-							{ value: 'custom', label: 'Custom width...' },
-						],
-					}),
-			},
-			{
-				onCancel: () => {
-					p.cancel('Operation cancelled.')
-					process.exit(0)
-				},
-			},
-		)
-
-		let resizeValue: number | undefined
-		if (settings.resize === 'custom') {
-			const customWidth = await p.text({
-				message: 'Enter custom width (px)',
-				placeholder: '1200',
-				validate(value) {
-					const n = parseInt(value ?? '', 10)
-					if (Number.isNaN(n) || n <= 0) return 'Must be a positive number'
-				},
-			})
-			if (isCancel(customWidth)) {
-				p.cancel('Operation cancelled.')
-				process.exit(0)
+				)
+				if (width === BACK) continue // back to the resize list
+				s.resize = Number(width)
+			} else {
+				s.resize = resize === 'none' ? undefined : Number(resize)
 			}
-			resizeValue = parseInt(customWidth as string, 10)
-		} else if (settings.resize !== 'none') {
-			resizeValue = parseInt(settings.resize as string, 10)
+			step++
 		}
-
-		format = settings.format === 'original' ? undefined : (settings.format as string)
-		quality = parseInt(settings.quality as string, 10)
-		resize = resizeValue
 	}
-
-	return { format, quality, resize }
+	return s
 }
 
-async function runCompress(): Promise<void> {
-	const { format, quality, resize } = await collectPresetOptions()
+// ─── paths ──────────────────────────────────────────────────────────────────
 
-	// Path input
-	const inputPath = await p.text({
-		message: 'Path to images (file or directory)',
-		placeholder: './photos',
-		validate(value) {
-			if (!value || value.trim() === '') return 'Path is required'
-		},
-	})
+const DROP_HINT = 'type a path, or drag a folder or images into this window'
 
-	if (isCancel(inputPath)) {
-		p.cancel('Operation cancelled.')
-		process.exit(0)
-	}
+async function chooseSource(initial?: string): Promise<string[] | Back> {
+	const raw = await ask(
+		p.text({
+			message: `Which images? (${DROP_HINT})`,
+			placeholder: './photos',
+			initialValue: initial,
+			validate(value) {
+				const parsed = parsePathInput(value)
+				if (!parsed.ok) return parsed.error
+			},
+		}),
+	)
+	if (raw === BACK) return BACK
+	const parsed = parsePathInput(raw)
+	return parsed.ok ? parsed.paths : BACK
+}
 
-	const resolvedPath = path.resolve(inputPath as string)
-
-	let filePaths: { path: string; format: string }[]
-	let isDirectory: boolean
+async function scanWithSpinner(inputs: string[]): Promise<Scan | null> {
+	const spin = p.spinner()
+	spin.start('Looking for images')
 	try {
-		const collected = await collectImageFiles(resolvedPath, [])
-		filePaths = collected.files
-		isDirectory = collected.isDirectory
+		const scan = await scanInputs(inputs)
+		const supported = scan.images.filter(
+			(i) => i.detectedFormat !== UNSUPPORTED || process.platform === 'darwin',
+		)
+		if (supported.length === 0) {
+			spin.error(`No images found in ${inputs.map(displayPath).join(', ')}`)
+			p.log.warn(
+				'Supported formats: JPEG, PNG, WebP, GIF, AVIF (and HEIC on macOS). Pick another folder.',
+			)
+			return null
+		}
+		spin.stop(`Found ${supported.length} ${supported.length === 1 ? 'image' : 'images'}`)
+		return { ...scan, images: supported }
+	} catch (err) {
+		spin.error('Could not read that location')
+		p.log.error((err as Error).message)
+		return null
+	}
+}
+
+function validateOutput(output: string, scan: Scan): string | undefined {
+	if (samePath(output, scan.sourceRoot) || scan.inputs.some((i) => samePath(i, output))) {
+		return 'That is the source folder — pick a different one so your originals are not overwritten'
+	}
+	if (fs.existsSync(output) && !fs.statSync(output).isDirectory()) {
+		return 'That path is a file, not a folder'
+	}
+	if (scan.inputs.some((i) => fs.statSync(i).isFile() && samePath(i, output))) {
+		return 'That is one of the source images'
+	}
+	return checkWritable(output)
+}
+
+/** The folder (or the closest existing parent, since it will be created) must be writable. */
+function checkWritable(dir: string): string | undefined {
+	let existing = dir
+	while (!fs.existsSync(existing)) {
+		const parent = path.dirname(existing)
+		if (parent === existing) break
+		existing = parent
+	}
+	try {
+		if (!fs.statSync(existing).isDirectory())
+			return `${displayPath(existing)} is a file, not a folder`
+		fs.accessSync(existing, fs.constants.W_OK)
 	} catch {
-		p.cancel(`Path not found: ${resolvedPath}`)
-		process.exit(1)
+		return `You don't have permission to write in ${displayPath(existing)} — choose another folder`
+	}
+}
+
+async function chooseOutput(scan: Scan, current?: string): Promise<string | Back> {
+	const fallback = current ?? path.join(scan.sourceRoot, DEFAULT_OUTPUT_FOLDER)
+	const raw = await ask(
+		p.text({
+			message: `Where should the optimized copies go? (Enter = ${displayPath(fallback)})`,
+			placeholder: displayPath(fallback),
+			defaultValue: fallback,
+			validate(value) {
+				if (!value?.trim()) return
+				return validateOutput(path.resolve(cleanPathInput(value)), scan)
+			},
+		}),
+	)
+	if (raw === BACK) return BACK
+	return path.resolve(cleanPathInput(raw))
+}
+
+// ─── compress ───────────────────────────────────────────────────────────────
+
+interface CompressState {
+	inputs?: string[]
+	scan?: Scan
+	preset?: PresetKey
+	settings?: EncodeSettings
+	output?: string
+}
+
+type Step = 'source' | 'settings' | 'output' | 'review' | 'run'
+
+async function runCompress(prefill?: string[]): Promise<'menu' | 'again'> {
+	const state: CompressState = {}
+	let step: Step = 'source'
+
+	if (prefill) {
+		state.inputs = prefill
+		const scan = await scanWithSpinner(prefill)
+		if (scan) {
+			state.scan = scan
+			step = 'settings'
+		}
 	}
 
-	if (filePaths.length === 0) {
-		p.outro('No images found to process.')
+	while (true) {
+		if (step === 'source') {
+			const inputs = await chooseSource(state.inputs?.join(' '))
+			if (inputs === BACK) return 'menu'
+			const scan = await scanWithSpinner(inputs)
+			if (!scan) continue // stay on this step
+			state.inputs = inputs
+			state.scan = scan
+			// A previous output that's now invalid (e.g. same as new source) is dropped
+			if (state.output && validateOutput(state.output, scan)) state.output = undefined
+			step = state.settings ? 'review' : 'settings'
+		} else if (step === 'settings') {
+			const chosen = await chooseSettings(
+				state.preset && state.settings
+					? { preset: state.preset, settings: state.settings }
+					: undefined,
+			)
+			if (chosen === BACK) {
+				step = state.output ? 'review' : 'source'
+				continue
+			}
+			state.preset = chosen.preset
+			state.settings = chosen.settings
+			step = state.output ? 'review' : 'output'
+		} else if (step === 'output') {
+			const output = await chooseOutput(state.scan as Scan, state.output)
+			if (output === BACK) {
+				step = 'settings'
+				continue
+			}
+			state.output = output
+			step = 'review'
+		} else if (step === 'review') {
+			const scan = state.scan as Scan
+			const settings = state.settings as EncodeSettings
+			const output = state.output as string
+			let plan: ReturnType<typeof assignOutputs>
+			try {
+				plan = assignOutputs(scan, output, settings.format)
+			} catch (err) {
+				p.log.error((err as PlanError).message)
+				step = 'output'
+				continue
+			}
+			const existing = plan.jobs.filter((j) => fs.existsSync(j.output)).length
+			p.note(
+				[
+					`From:      ${scan.inputs.map(displayPath).join(', ')}`,
+					`Images:    ${plan.jobs.length}`,
+					`Settings:  ${describeSettings(settings)}`,
+					`Save to:   ${displayPath(output)}${fs.existsSync(output) ? '' : '  (will be created)'}`,
+					'',
+					'Your original images are not modified.',
+					...(existing > 0
+						? [`${existing} file(s) already in the output folder will be replaced.`]
+						: []),
+				].join('\n'),
+				'Ready',
+			)
+			const choice = await ask(
+				p.select<string>({
+					message: 'Start?',
+					options: [
+						{ value: 'run', label: 'Start optimizing' },
+						{ value: 'source', label: 'Change images' },
+						{ value: 'settings', label: 'Change settings' },
+						{ value: 'output', label: 'Change output folder' },
+						{ value: 'menu', label: 'Cancel — back to main menu' },
+					],
+				}),
+			)
+			if (choice === BACK) step = 'output'
+			else if (choice === 'menu') return 'menu'
+			else step = choice as Step
+		} else {
+			const plan = assignOutputs(state.scan as Scan, state.output as string, state.settings?.format)
+			await executePlan(plan.jobs, state.settings as EncodeSettings, state.output as string)
+			const next = await ask(
+				p.select<string>({
+					message: 'What next?',
+					options: [
+						{ value: 'open', label: 'Open the output folder' },
+						{ value: 'again', label: 'Optimize more images' },
+						{ value: 'retry', label: 'Run again with different settings' },
+						{ value: 'menu', label: 'Main menu' },
+						{ value: 'quit', label: 'Exit' },
+					],
+				}),
+			)
+			if (next === 'open') {
+				openFolder(state.output as string)
+				return 'menu'
+			}
+			if (next === 'retry') {
+				step = 'settings'
+				continue
+			}
+			if (next === 'quit') quit()
+			return next === 'again' ? 'again' : 'menu'
+		}
+	}
+}
+
+async function executePlan(
+	jobs: ReturnType<typeof assignOutputs>['jobs'],
+	settings: EncodeSettings,
+	output: string,
+) {
+	const controller = new AbortController()
+	const onSigint = () => controller.abort()
+	process.on('SIGINT', onSigint)
+
+	const bar = p.progress({ max: jobs.length, size: 30 })
+	bar.start(`Optimizing ${jobs.length} images (Ctrl+C to stop)`)
+	let done = 0
+	const batch = await runBatch(
+		jobs,
+		settings,
+		defaultConcurrency(),
+		(job) => {
+			done++
+			bar.advance(1, `${done}/${jobs.length}  ${path.basename(job.input)}`)
+		},
+		controller.signal,
+	)
+	process.off('SIGINT', onSigint)
+
+	const { results, errors } = batch
+	const stopped = controller.signal.aborted
+	if (stopped) bar.stop(`Stopped — ${results.length} of ${jobs.length} images done`)
+	else if (results.length === 0) bar.error('No image could be optimized')
+	else bar.stop(`Done in ${(batch.duration / 1000).toFixed(1)}s`)
+
+	const before = results.reduce((s, r) => s + r.originalSize, 0)
+	const after = results.reduce((s, r) => s + r.newSize, 0)
+	const pct = before > 0 ? Math.round((1 - after / before) * 100) : 0
+	const kept = results.filter((r) => r.keptOriginal).length
+
+	const lines = [
+		`${results.length} ${results.length === 1 ? 'image' : 'images'} optimized`,
+		`${formatBytes(before)} → ${formatBytes(after)}  (${pct}% smaller, ${formatBytes(before - after)} saved)`,
+		`Saved to: ${displayPath(output)}`,
+	]
+	if (kept > 0) lines.push(`${kept} were already optimal and were copied unchanged.`)
+	p.note(lines.join('\n'), errors.length > 0 ? 'Finished with errors' : 'Finished')
+
+	if (errors.length > 0) {
+		const shown = errors.slice(0, 8)
+		p.log.error(
+			[
+				`${errors.length} ${errors.length === 1 ? 'image' : 'images'} could not be optimized:`,
+				...shown.map((e) => `  ${path.basename(e.file)} — ${e.message}`),
+				...(errors.length > shown.length ? [`  …and ${errors.length - shown.length} more`] : []),
+			].join('\n'),
+		)
+	}
+}
+
+function openFolder(dir: string) {
+	const cmd =
+		process.platform === 'darwin' ? 'open' : process.platform === 'win32' ? 'explorer' : 'xdg-open'
+	try {
+		const child = spawn(cmd, [dir], { detached: true, stdio: 'ignore' })
+		child.on('error', () => p.log.warn(`Could not open the folder. It is here: ${dir}`))
+		child.unref()
+	} catch {
+		p.log.warn(`Could not open the folder. It is here: ${dir}`)
+	}
+}
+
+// ─── watch ──────────────────────────────────────────────────────────────────
+
+async function runWatch(): Promise<void> {
+	let dir: string | undefined
+	let chosen: { preset: PresetKey; settings: EncodeSettings } | undefined
+	let output: string | undefined
+	let step = 0
+
+	while (step < 3) {
+		if (step === 0) {
+			const raw = await ask(
+				p.text({
+					message: `Which folder should be watched? (${DROP_HINT})`,
+					placeholder: './uploads',
+					initialValue: dir,
+					validate(value) {
+						const parsed = parsePathInput(value)
+						if (!parsed.ok) return parsed.error
+						if (parsed.paths.length > 1 || !fs.statSync(parsed.paths[0]).isDirectory())
+							return 'Choose one folder (not files)'
+					},
+				}),
+			)
+			if (raw === BACK) return
+			const parsed = parsePathInput(raw)
+			if (!parsed.ok) continue
+			dir = parsed.paths[0]
+			step++
+		} else if (step === 1) {
+			const s = await chooseSettings(chosen)
+			if (s === BACK) {
+				step--
+				continue
+			}
+			chosen = s
+			step++
+		} else {
+			const fakeScan: Scan = { inputs: [dir as string], sourceRoot: dir as string, images: [] }
+			const out = await chooseOutput(fakeScan, output)
+			if (out === BACK) {
+				step--
+				continue
+			}
+			output = out
+			step++
+		}
+	}
+
+	const root = dir as string
+	const out = output as string
+	let handle: Awaited<ReturnType<typeof startWatch>>
+	try {
+		handle = await startWatch(root, {
+			...(chosen?.settings as EncodeSettings),
+			output: out,
+			log: (line) => p.log.success(line),
+			logError: (line) => p.log.error(line),
+		})
+	} catch (err) {
+		p.log.error((err as Error).message)
 		return
 	}
 
-	// Destination input
-	const destInput = await p.text({
-		message: 'Destination directory',
-		placeholder: DEFAULTS.destination,
-		initialValue: DEFAULTS.destination,
-	})
-
-	if (isCancel(destInput)) {
-		p.cancel('Operation cancelled.')
-		process.exit(0)
-	}
-
-	const destination = (destInput as string) || DEFAULTS.destination
-
-	// Show summary
-	const resizeLabel = resize ? `${resize}px` : 'No resize'
-	const formatLabel = format ?? 'Keep original'
 	p.note(
 		[
-			`Source:    ${resolvedPath} (${filePaths.length} images found)`,
-			`Format:    ${formatLabel}`,
-			`Quality:   ${quality}`,
-			`Resize:    ${resizeLabel}`,
-			`Output:    ${path.join(destination, DEFAULTS.outputFolder)}`,
-		].join('\n'),
-		'Summary',
+			`Watching:  ${displayPath(root)}`,
+			`Settings:  ${describeSettings(chosen?.settings as EncodeSettings)}`,
+			`Save to:   ${displayPath(out)}`,
+			'',
+			'New or changed images are optimized automatically.',
+			isInside(out, root) ? `(${path.basename(out)} itself is ignored)` : '',
+		]
+			.filter(Boolean)
+			.join('\n'),
+		'Watching — press Ctrl+C to stop',
 	)
 
-	const confirmed = await p.confirm({ message: 'Start processing?' })
-
-	if (isCancel(confirmed) || !confirmed) {
-		p.cancel('Operation cancelled.')
-		process.exit(0)
-	}
-
-	// Process images
-	const options: CompressOptions = {
-		quality: quality,
-		format,
-		resize,
-		destination,
-		outputFolder: DEFAULTS.outputFolder,
-		concurrency: availableParallelism(),
-		exclude: [],
-		dryRun: false,
-		verbose: false,
-		json: false,
-	}
-
-	const sourcePath = isDirectory ? resolvedPath : path.dirname(resolvedPath)
-	const startTime = performance.now()
-	const errors: Error[] = []
-
-	const bar = p.progress({ max: filePaths.length })
-	bar.start('Processing images')
-
-	const processedResults = await processPool(
-		filePaths,
-		async (file) => {
-			try {
-				const result = await optimizeImage(file.path, {
-					...options,
-					sourcePath,
-					detectedFormat: file.format,
-				})
-				bar.advance(1, `Processed ${path.basename(file.path)}`)
-				return result
-			} catch (err) {
-				errors.push(err as Error)
-				bar.advance(1, `Failed ${path.basename(file.path)}`)
-				return null
-			}
-		},
-		options.concurrency,
-	)
-
-	bar.stop('All images processed')
-
-	const validResults = processedResults.filter((r): r is FileResult => r !== null)
-	const totalDuration = performance.now() - startTime
-
-	const summary = formatSummary(validResults, errors, totalDuration)
-	p.note(summary, 'Results')
-
-	p.outro('Done! Your optimized images are ready.')
+	await new Promise<void>((resolve) => process.once('SIGINT', () => resolve()))
+	handle.close()
+	p.log.info('Stopped watching.')
 }
 
-async function runWatch(): Promise<void> {
-	const watchDir = await p.text({
-		message: 'Directory to watch',
-		placeholder: './photos',
-		validate(value) {
-			if (!value?.trim()) return 'Path is required'
-		},
-	})
-
-	if (isCancel(watchDir)) {
-		p.cancel('Operation cancelled.')
-		process.exit(0)
-	}
-
-	const { format, quality, resize } = await collectPresetOptions()
-
-	const destInput = await p.text({
-		message: 'Destination directory',
-		placeholder: DEFAULTS.destination,
-		initialValue: DEFAULTS.destination,
-	})
-
-	if (isCancel(destInput)) {
-		p.cancel('Operation cancelled.')
-		process.exit(0)
-	}
-
-	const destination = (destInput as string) || DEFAULTS.destination
-
-	p.log.info(`Watching ${watchDir}... Press Ctrl+C to stop.`)
-
-	await startWatch(watchDir as string, {
-		quality,
-		format,
-		resize,
-		destination,
-	})
-}
+// ─── hook ───────────────────────────────────────────────────────────────────
 
 async function runHook(): Promise<void> {
-	const hookAction = await p.select({
-		message: 'Git hook action',
-		options: [
-			{ value: 'install', label: 'Install', hint: 'auto-optimize images on commit' },
-			{ value: 'uninstall', label: 'Uninstall', hint: 'remove the hook' },
-		],
-	})
-
-	if (isCancel(hookAction)) {
-		p.cancel('Operation cancelled.')
-		process.exit(0)
-	}
-
-	if (hookAction === 'install') {
-		await installHook()
-		p.outro('Git hook installed! Images will be auto-optimized on commit.')
-	} else {
-		await uninstallHook()
-		p.outro('Git hook removed.')
+	const action = await ask(
+		p.select<string>({
+			message: `Git hook for ${displayPath(process.cwd())}`,
+			options: [
+				{ value: 'install', label: 'Install', hint: 'optimize staged images on every commit' },
+				{ value: 'uninstall', label: 'Uninstall', hint: 'remove the hook' },
+			],
+		}),
+	)
+	if (action === BACK) return
+	try {
+		if (action === 'install') await installHook()
+		else await uninstallHook()
+	} catch (err) {
+		if (!(err instanceof HookError)) throw err
+		p.log.error(`${err.message} (current folder: ${displayPath(process.cwd())})`)
 	}
 }
 
-export async function runInteractive(): Promise<void> {
-	p.intro('Punto y Coma — bulki')
+// ─── entry ──────────────────────────────────────────────────────────────────
 
-	const action = await p.select({
-		message: 'What do you want to do?',
-		options: [
-			{ value: 'compress', label: 'Compress images', hint: 'optimize files or directories' },
-			{ value: 'watch', label: 'Watch directory', hint: 'auto-optimize new images' },
-			{ value: 'hook', label: 'Git hook', hint: 'auto-optimize on commit' },
-		],
-	})
-
-	if (isCancel(action)) {
-		p.cancel('Operation cancelled.')
-		process.exit(0)
+export async function runInteractive(prefill?: string[]): Promise<void> {
+	if (!process.stdin.isTTY) {
+		console.error('Interactive mode needs a terminal. Run `bulki --help` to see the commands.')
+		process.exit(1)
 	}
 
-	if (action === 'compress') {
-		await runCompress()
-	} else if (action === 'watch') {
-		await runWatch()
-	} else {
-		await runHook()
+	readline.emitKeypressEvents(process.stdin)
+	process.stdin.on('keypress', (_str, key) => {
+		if (key?.ctrl && key.name === 'c') ctrlCPressed = true
+	})
+
+	p.intro('Punto y Coma — bulki')
+	p.log.message('Esc = go back · Ctrl+C = quit', { symbol: ' ' })
+
+	let next: 'menu' | 'again' = 'menu'
+	let pending = prefill
+	while (true) {
+		let action: string | Back = 'compress'
+		if (next === 'menu' && !pending) {
+			action = await ask(
+				p.select<string>({
+					message: 'What do you want to do?',
+					options: [
+						{ value: 'compress', label: 'Optimize images', hint: 'files or folders' },
+						{ value: 'watch', label: 'Watch a folder', hint: 'auto-optimize new images' },
+						{ value: 'hook', label: 'Git hook', hint: 'auto-optimize on commit' },
+						{ value: 'quit', label: 'Exit' },
+					],
+				}),
+			)
+			if (action === 'quit') quit()
+			if (action === BACK) {
+				// Esc on the main menu must not close bulki — leaving is always explicit
+				p.log.info('To leave bulki choose "Exit" or press Ctrl+C.')
+				continue
+			}
+		}
+
+		try {
+			if (action === 'compress') {
+				next = await runCompress(pending)
+				pending = undefined
+			} else if (action === 'watch') {
+				await runWatch()
+				next = 'menu'
+			} else {
+				await runHook()
+				next = 'menu'
+			}
+		} catch (err) {
+			// Last line of defence: report and return to the menu instead of crashing
+			p.log.error(`Something went wrong: ${(err as Error).message}`)
+			pending = undefined
+			next = 'menu'
+		}
 	}
 }

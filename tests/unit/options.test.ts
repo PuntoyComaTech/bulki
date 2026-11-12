@@ -1,5 +1,13 @@
+import path from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { parseSize, validateOptions } from '../../src/validation/options.js'
+import {
+	parseInteger,
+	parseSize,
+	resolveOutputDir,
+	validateOptions,
+} from '../../src/validation/options.js'
+
+const CWD = path.resolve('/work/project')
 
 describe('validateOptions', () => {
 	describe('default values', () => {
@@ -8,14 +16,9 @@ describe('validateOptions', () => {
 			expect(result.quality).toBe(70)
 		})
 
-		it('returns destination "." when no destination is specified', () => {
-			const result = validateOptions({})
-			expect(result.destination).toBe('.')
-		})
-
-		it('returns outputFolder "bulki-output" when not specified', () => {
-			const result = validateOptions({})
-			expect(result.outputFolder).toBe('bulki-output')
+		it('writes to ./bulki-output (absolute) when no output is specified', () => {
+			const result = validateOptions({}, CWD)
+			expect(result.output).toBe(path.join(CWD, 'bulki-output'))
 		})
 
 		it('returns a numeric concurrency when not specified', () => {
@@ -80,14 +83,14 @@ describe('validateOptions', () => {
 			expect(result.resize).toBe(1920)
 		})
 
-		it('accepts a custom destination path', () => {
-			const result = validateOptions({ destination: '/tmp/output' })
-			expect(result.destination).toBe('/tmp/output')
+		it('uses --output as the exact output folder', () => {
+			const result = validateOptions({ output: '/tmp/My Output' }, CWD)
+			expect(result.output).toBe(path.resolve('/tmp/My Output'))
 		})
 
-		it('accepts a custom outputFolder', () => {
-			const result = validateOptions({ outputFolder: 'optimized' })
-			expect(result.outputFolder).toBe('optimized')
+		it('resolves a relative --output against the cwd', () => {
+			const result = validateOptions({ output: 'optimized' }, CWD)
+			expect(result.output).toBe(path.join(CWD, 'optimized'))
 		})
 
 		it('accepts dryRun true', () => {
@@ -175,5 +178,54 @@ describe('parseSize', () => {
 
 	it('throws a descriptive error for unsupported unit "gb"', () => {
 		expect(() => parseSize('1gb')).toThrow()
+	})
+})
+
+describe('resolveOutputDir (legacy flags)', () => {
+	it('--destination alone → <destination>/bulki-output', () => {
+		expect(resolveOutputDir({ destination: '/tmp/out' }, CWD)).toBe(
+			path.resolve('/tmp/out/bulki-output'),
+		)
+	})
+
+	it('--destination + --output-folder → <destination>/<folder>', () => {
+		expect(resolveOutputDir({ destination: '/tmp/out', outputFolder: 'web' }, CWD)).toBe(
+			path.resolve('/tmp/out/web'),
+		)
+	})
+
+	it('--destination + -o <name> (old meaning) → <destination>/<name>', () => {
+		expect(resolveOutputDir({ destination: '/tmp/out', output: 'web' }, CWD)).toBe(
+			path.resolve('/tmp/out/web'),
+		)
+	})
+
+	it('rejects path separators in --output-folder', () => {
+		expect(() => resolveOutputDir({ outputFolder: '../evil' }, CWD)).toThrowError(/outputFolder/)
+	})
+
+	it('accepts quoted / escaped paths with spaces (drag & drop)', () => {
+		expect(resolveOutputDir({ output: "'/tmp/My Output' " }, CWD)).toBe(
+			path.resolve('/tmp/My Output'),
+		)
+		if (path.sep === '/') {
+			expect(resolveOutputDir({ output: '/tmp/My\\ Output' }, CWD)).toBe('/tmp/My Output')
+		}
+	})
+})
+
+describe('parseInteger', () => {
+	it('parses plain integers', () => {
+		expect(parseInteger('80')).toBe(80)
+	})
+
+	it('rejects trailing garbage instead of silently truncating', () => {
+		expect(parseInteger('80abc')).toBeNaN()
+		expect(parseInteger('abc')).toBeNaN()
+		expect(parseInteger('1.5')).toBeNaN()
+	})
+
+	it('makes validateOptions reject a non-numeric concurrency', () => {
+		expect(() => validateOptions({ concurrency: parseInteger('abc') })).toThrowError(/concurrency/)
 	})
 })

@@ -2,136 +2,158 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { Command } from 'commander'
 import { formatFileResult } from '../output/results.js'
+import { defaultOutputFormat, extensionFor } from '../pipeline/encode.js'
 import { detectFormat } from '../pipeline/filter.js'
-import { optimizeImage } from '../pipeline/optimize.js'
-import { DEFAULTS } from '../validation/options.js'
+import { friendlyError, optimizeImage } from '../pipeline/optimize.js'
+import { displayPath, isInside, resolveUserPath, samePath } from '../pipeline/paths.js'
+import type { EncodeSettings } from '../types/index.js'
+import {
+	DEFAULT_OUTPUT_FOLDER,
+	DEFAULTS,
+	defaultConcurrency,
+	parseInteger,
+	resolveOutputDir,
+	validateEncodeSettings,
+} from '../validation/options.js'
 
-export interface WatchOptions {
-	quality?: number
-	format?: string
-	resize?: number
-	destination?: string
-	outputFolder?: string
+export interface WatchOptions extends EncodeSettings {
+	/** Absolute output folder */
+	output: string
+	log?: (line: string) => void
+	logError?: (line: string) => void
 }
 
-export async function startWatch(dirPath: string, opts: WatchOptions = {}): Promise<void> {
-	const resolvedPath = path.resolve(dirPath)
+export interface WatchHandle {
+	output: string
+	close(): void
+}
 
-	// Verify path exists and is a directory
-	try {
-		const stats = await fs.promises.stat(resolvedPath)
-		if (!stats.isDirectory()) {
-			console.error('Watch path must be a directory')
-			process.exit(1)
-		}
-	} catch {
-		console.error(`Path not found: ${resolvedPath}`)
-		process.exit(1)
-	}
+/** How long a file must stop changing before we treat it as fully written. */
+const SETTLE_MS = 400
 
-	const quality = opts.quality ?? DEFAULTS.quality
-	const format = opts.format === 'jpg' ? 'jpeg' : opts.format
-	const resize = opts.resize
-	const destination = opts.destination ?? DEFAULTS.destination
-	const outputFolder = opts.outputFolder ?? DEFAULTS.outputFolder
-
-	console.log(`Watching ${resolvedPath} for new images...`)
-	console.log('Press Ctrl+C to stop.\n')
-
-	if (process.platform === 'linux') {
-		console.log(
-			'Note: recursive watching may not work on all Linux systems. Use macOS or Windows for reliable subdirectory monitoring.',
+/**
+ * Watch `dir` recursively and optimize every image that appears or changes.
+ * Throws if `dir` isn't a folder; per-file errors are logged, never fatal.
+ */
+export async function startWatch(dir: string, opts: WatchOptions): Promise<WatchHandle> {
+	const root = path.resolve(dir)
+	const stat = await fs.promises.stat(root).catch(() => null)
+	if (!stat) throw new Error(`Path not found: ${root}`)
+	if (!stat.isDirectory()) throw new Error(`Watch path must be a folder: ${root}`)
+	if (samePath(root, opts.output)) {
+		throw new Error(
+			'The output folder is the same as the watched folder. Choose a different output folder.',
 		)
 	}
 
-	// Track processed files to avoid duplicates (fs.watch can fire multiple events)
-	const processing = new Set<string>()
-	let activeJobs = 0
-	const maxJobs = 4
+	const log = opts.log ?? console.log
+	const logError = opts.logError ?? console.error
+	const settings: EncodeSettings = {
+		quality: opts.quality,
+		format: opts.format,
+		resize: opts.resize,
+	}
 
-	// Use fs.watch with recursive option
-	const watcher = fs.watch(resolvedPath, { recursive: true }, async (_eventType, filename) => {
-		if (!filename) return
+	const timers = new Map<string, NodeJS.Timeout>()
+	const queue: string[] = []
+	const queued = new Set<string>()
+	let active = 0
+	const maxActive = defaultConcurrency()
 
-		const fullPath = path.resolve(resolvedPath, filename)
-
-		// Skip if already processing this file
-		if (processing.has(fullPath)) return
-		processing.add(fullPath)
-
-		// Concurrency limit
-		while (activeJobs >= maxJobs) {
-			await new Promise((r) => setTimeout(r, 100))
-		}
-		activeJobs++
-
-		// Skip files in the output folder to avoid infinite loops
-		const resolvedDest = destination === '.' ? resolvedPath : path.resolve(destination)
-		const outputDir = path.join(resolvedDest, outputFolder)
-		if (fullPath === outputDir || fullPath.startsWith(`${outputDir}${path.sep}`)) {
-			processing.delete(fullPath)
-			return
-		}
-
-		// Small delay to let file writes complete
-		await new Promise((r) => setTimeout(r, 100))
-
-		// Check if file exists (could be a delete event)
-		try {
-			await fs.promises.stat(fullPath)
-		} catch {
-			processing.delete(fullPath)
-			return
-		}
-
-		// Check if it's an image
-		const detectedFormat = await detectFormat(fullPath)
-		if (!detectedFormat) {
-			processing.delete(fullPath)
-			return
-		}
-
-		try {
-			const result = await optimizeImage(fullPath, {
-				quality,
-				format,
-				resize,
-				destination,
-				outputFolder,
-				concurrency: 1,
-				exclude: [],
-				dryRun: false,
-				verbose: false,
-				json: false,
-				sourcePath: resolvedPath,
-				detectedFormat,
+	const pump = () => {
+		while (active < maxActive && queue.length > 0) {
+			const file = queue.shift() as string
+			queued.delete(file)
+			active++
+			processFile(file).finally(() => {
+				active--
+				pump()
 			})
-			console.log(formatFileResult(result))
-		} catch (err) {
-			console.error(`Error processing ${filename}: ${(err as Error).message}`)
-		} finally {
-			activeJobs--
-			// Remove from processing after a delay to debounce
-			setTimeout(() => processing.delete(fullPath), 1000)
 		}
-	})
+	}
 
-	// Keep process alive and handle Ctrl+C
-	process.on('SIGINT', () => {
-		watcher.close()
-		console.log('\nWatch stopped.')
-		process.exit(0)
+	const processFile = async (file: string) => {
+		const detectedFormat = await detectFormat(file)
+		if (!detectedFormat) return
+		const rel = path.relative(root, file)
+		const parsed = path.parse(rel)
+		const ext = settings.format ? extensionFor(settings.format) : parsed.ext
+		const target = settings.format ?? defaultOutputFormat(detectedFormat)
+		const output = path.join(
+			opts.output,
+			parsed.dir,
+			`${parsed.name}${detectedFormat === 'unsupported' && !settings.format ? extensionFor(target) : ext}`,
+		)
+		try {
+			const result = await optimizeImage({ input: file, detectedFormat, output }, settings)
+			log(formatFileResult(result))
+		} catch (err) {
+			logError(`✗ ${rel}: ${friendlyError(err as Error)}`)
+		}
+	}
+
+	const schedule = (file: string) => {
+		clearTimeout(timers.get(file))
+		timers.set(
+			file,
+			setTimeout(async () => {
+				timers.delete(file)
+				const s = await fs.promises.stat(file).catch(() => null)
+				if (!s?.isFile() || queued.has(file)) return
+				queue.push(file)
+				queued.add(file)
+				pump()
+			}, SETTLE_MS),
+		)
+	}
+
+	const watcher = fs.watch(root, { recursive: true }, (_event, filename) => {
+		if (!filename) return
+		const file = path.resolve(root, filename.toString())
+		const rel = path.relative(root, file)
+		if (isInside(file, opts.output)) return
+		if (rel.split(path.sep).some((part) => part.startsWith('.') || part === DEFAULT_OUTPUT_FOLDER))
+			return
+		if (file.endsWith('.tmp')) return
+		schedule(file)
 	})
+	watcher.on('error', (err) => logError(`Watcher error: ${err.message}`))
+
+	return {
+		output: opts.output,
+		close() {
+			watcher.close()
+			for (const t of timers.values()) clearTimeout(t)
+			timers.clear()
+		},
+	}
 }
 
 export const watchCommand = new Command('watch')
-	.description('Watch a directory and auto-optimize new images')
-	.argument('<path>', 'Directory to watch')
-	.option('-q, --quality <n>', 'Output quality (1-100)', (v) => parseInt(v, 10), 70)
-	.option('-f, --format <fmt>', 'Output format (jpeg, png, webp, gif, avif)')
-	.option('-r, --resize <width>', 'Resize to width (px)', (v) => parseInt(v, 10))
-	.option('-d, --destination <path>', 'Destination directory', '.')
-	.option('-o, --output-folder <name>', 'Output subfolder name', 'bulki-output')
-	.action(async (dirPath: string, opts) => {
-		await startWatch(dirPath, opts)
+	.description('Watch a folder and auto-optimize images as they appear')
+	.argument('<path>', 'Folder to watch')
+	.option('-o, --output <dir>', 'Folder where optimized images are written', DEFAULTS.output)
+	.option('-q, --quality <n>', 'Output quality (1-100)', parseInteger, DEFAULTS.quality)
+	.option('-f, --format <fmt>', 'Convert to jpeg, png, webp, gif or avif (default: keep format)')
+	.option('-r, --resize <width>', 'Max width in px (never enlarges)', parseInteger)
+	.option('-d, --destination <dir>', 'Deprecated: base folder; output goes to <dir>/bulki-output')
+	.option('--output-folder <name>', 'Deprecated: subfolder name inside --destination')
+	.action(async (dirPath: string, opts, cmd: Command) => {
+		try {
+			const settings = validateEncodeSettings(opts)
+			const outputFromCli = cmd.getOptionValueSource('output') === 'cli'
+			const root = resolveUserPath(dirPath)
+			const output = resolveOutputDir({ ...opts, output: outputFromCli ? opts.output : undefined })
+			const handle = await startWatch(root, { ...settings, output })
+			console.log(`Watching ${displayPath(root)} → ${displayPath(output)}`)
+			console.log('Press Ctrl+C to stop.\n')
+			process.once('SIGINT', () => {
+				handle.close()
+				console.log('\nWatch stopped.')
+				process.exit(0)
+			})
+		} catch (err) {
+			console.error(`error: ${(err as Error).message}`)
+			process.exit(1)
+		}
 	})

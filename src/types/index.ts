@@ -1,3 +1,5 @@
+export type OutputFormat = 'jpeg' | 'png' | 'webp' | 'gif' | 'avif'
+
 export interface FileResult {
 	inputPath: string
 	outputPath: string
@@ -5,20 +7,33 @@ export interface FileResult {
 	newSize: number
 	format: string
 	duration: number
+	/** true when re-encoding would have made the file bigger, so the original bytes were copied */
+	keptOriginal?: boolean
 }
 
-export interface CompressOptions {
+/** How every image is encoded. Shared by compress, watch, pipe, MCP and interactive mode. */
+export interface EncodeSettings {
 	quality: number
-	format?: string
+	format?: OutputFormat
 	resize?: number
-	destination: string
-	outputFolder: string
+}
+
+export interface CompressOptions extends EncodeSettings {
+	/** Absolute path of the folder where optimized copies are written */
+	output: string
 	concurrency: number
 	exclude: string[]
 	dryRun: boolean
 	verbose: boolean
 	json: boolean
 	maxSize?: number
+}
+
+/** One planned unit of work: read `input`, write `output`. */
+export interface ImageJob {
+	input: string
+	detectedFormat: string
+	output: string
 }
 
 export interface JsonFileResult {
@@ -29,6 +44,7 @@ export interface JsonFileResult {
 	reduction: number
 	format: string
 	duration: number
+	keptOriginal?: boolean
 	exceeded?: boolean
 }
 
@@ -47,17 +63,8 @@ export interface JsonError {
 }
 
 export interface JsonOutput {
+	output?: string
 	files: JsonFileResult[]
 	summary: JsonSummary
 	errors: JsonError[]
-}
-
-export interface OptimizeParams {
-	quality: number
-	format?: string
-	resize?: number
-	destination: string
-	outputFolder: string
-	sourcePath: string
-	detectedFormat: string
 }

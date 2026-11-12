@@ -217,6 +217,101 @@ describe('bulki CLI', () => {
 		})
 	})
 
+	describe('compress command — output folder & paths', () => {
+		it('-o is the exact output folder', async () => {
+			tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'bulki-'))
+			const out = path.join(tmpDir, 'optimized')
+			await execa('node', [BIN, 'compress', path.join(FIXTURES, 'sample.jpg'), '-o', out])
+			expect(await fs.readdir(out)).toEqual(['sample.jpg'])
+		})
+
+		it('defaults to ./bulki-output in the current directory', async () => {
+			tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'bulki-'))
+			const { stdout } = await execa('node', [BIN, 'compress', path.join(FIXTURES, 'sample.jpg')], {
+				cwd: tmpDir,
+			})
+			expect(await fs.readdir(path.join(tmpDir, 'bulki-output'))).toEqual(['sample.jpg'])
+			expect(stdout).toContain('bulki-output')
+		})
+
+		it('works with spaces in input and output paths', async () => {
+			tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'bulki with spaces '))
+			const src = path.join(tmpDir, 'My Photos')
+			await fs.mkdir(src)
+			await fs.copyFile(path.join(FIXTURES, 'sample.jpg'), path.join(src, 'beach day.jpg'))
+			const out = path.join(tmpDir, 'Web Ready')
+			const { exitCode } = await execa('node', [BIN, 'compress', src, '-o', out])
+			expect(exitCode).toBe(0)
+			expect(await fs.readdir(out)).toEqual(['beach day.jpg'])
+		})
+
+		it('accepts several paths (e.g. a shell glob)', async () => {
+			tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'bulki-'))
+			const { exitCode } = await execa('node', [
+				BIN,
+				'compress',
+				path.join(FIXTURES, 'sample.jpg'),
+				path.join(FIXTURES, 'sample.png'),
+				'-o',
+				tmpDir,
+			])
+			expect(exitCode).toBe(0)
+			expect((await fs.readdir(tmpDir)).sort()).toEqual(['sample.jpg', 'sample.png'])
+		})
+
+		it('legacy -d <dir> -o <name> still means <dir>/<name>', async () => {
+			tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'bulki-'))
+			await execa('node', [
+				BIN,
+				'compress',
+				path.join(FIXTURES, 'sample.jpg'),
+				'-d',
+				tmpDir,
+				'-o',
+				'web',
+			])
+			expect(await fs.readdir(path.join(tmpDir, 'web'))).toEqual(['sample.jpg'])
+		})
+
+		it('running twice in place does not nest bulki-output/bulki-output', async () => {
+			tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'bulki-'))
+			await fs.copyFile(path.join(FIXTURES, 'sample.jpg'), path.join(tmpDir, 'a.jpg'))
+			await execa('node', [BIN, 'compress', '.'], { cwd: tmpDir })
+			await execa('node', [BIN, 'compress', '.'], { cwd: tmpDir })
+			expect(await fs.readdir(path.join(tmpDir, 'bulki-output'))).toEqual(['a.jpg'])
+		})
+
+		it('refuses to write over the originals', async () => {
+			const result = await execa('node', [BIN, 'compress', FIXTURES, '-o', FIXTURES], {
+				reject: false,
+			})
+			expect(result.exitCode).not.toBe(0)
+			expect(result.stderr).toMatch(/same as the source/)
+		})
+
+		it('exits non-zero and names the file when an image fails', async () => {
+			tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'bulki-'))
+			const src = path.join(tmpDir, 'src')
+			await fs.mkdir(src)
+			await fs.copyFile(path.join(FIXTURES, 'sample.jpg'), path.join(src, 'good.jpg'))
+			await fs.writeFile(path.join(src, 'broken.jpg'), Buffer.from([0xff, 0xd8, 0xff, 1, 2, 3]))
+			const result = await execa('node', [BIN, 'compress', src, '-o', path.join(tmpDir, 'out')], {
+				reject: false,
+			})
+			expect(result.exitCode).toBe(1)
+			expect(result.stderr).toContain('broken.jpg')
+			expect(await fs.readdir(path.join(tmpDir, 'out'))).toEqual(['good.jpg'])
+		})
+
+		it('rejects a non-numeric quality instead of truncating it', async () => {
+			const result = await execa('node', [BIN, 'compress', FIXTURES, '-q', '80abc', '--dry-run'], {
+				reject: false,
+			})
+			expect(result.exitCode).not.toBe(0)
+			expect(result.stderr).toMatch(/quality/i)
+		})
+	})
+
 	describe('hook command', () => {
 		it('hook install creates pre-commit hook', async () => {
 			const hookTmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'bulki-hook-'))

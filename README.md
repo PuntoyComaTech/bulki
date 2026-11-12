@@ -35,43 +35,68 @@ npm install -g @puntoycoma/bulki
 bulki
 ```
 
-Guided menu with presets:
-- **Web optimized** — WebP, quality 80, max 1920px
-- **Social media** — PNG, quality 85, max 1080px
-- **Custom** — you choose everything
+Guided step-by-step mode. Drag a folder (or several images) into the terminal window when it asks
+for a path — quotes, escaped spaces and trailing spaces are handled for you. You can also start it
+with a path: `bulki ~/Desktop/My\ Photos`.
+
+Presets:
+- **Web optimized** — WebP, quality 80, max 1920px wide
+- **Social media** — JPEG, quality 85, max 1080px wide
+- **Just make them smaller** — same format and size, quality 80
+- **Custom** — you choose format, quality and size
+
+Navigation: **Esc** goes back one step (nothing you chose is lost), **Ctrl+C** quits. A wrong path or
+number is rejected in place so you can fix it. Before starting you get a summary where you can change
+the images, settings or output folder; afterwards you can open the output folder or run again with
+different settings.
 
 ### CLI mode
 
 ```bash
-bulki compress ./photos                    # optimize with defaults
-bulki compress ./photos -f webp -q 80      # convert to WebP
-bulki compress ./photos -r 1920 -q 85      # resize to 1920px
-bulki compress hero.png -f avif -q 70      # single file to AVIF
+bulki compress ./photos                         # → ./bulki-output
+bulki compress ./photos -o ./web -f webp -q 80  # convert to WebP into ./web
+bulki compress "My Photos" -o "Web Ready" -r 1920
+bulki compress hero.png logo.png -f avif        # several files at once (globs work too)
 ```
 
 ---
 
 ## Compress
 
-Optimize one file or an entire directory. Preserves folder structure.
+Optimize files and/or folders. **Originals are never modified** — optimized copies are written to the
+output folder, mirroring the folder structure.
 
 ```bash
-bulki compress <path> [options]
+bulki compress <paths...> [options]
 ```
 
 | Option | Alias | Description | Default |
 |--------|-------|-------------|---------|
+| `--output <dir>` | `-o` | Folder where optimized images are written | `./bulki-output` |
 | `--quality <n>` | `-q` | Output quality (1-100) | `70` |
-| `--format <fmt>` | `-f` | `jpeg`, `png`, `webp`, `gif`, `avif` | original |
-| `--resize <width>` | `-r` | Max width in pixels | original |
-| `--destination <path>` | `-d` | Output base directory | `.` |
-| `--output-folder <name>` | `-o` | Output folder name | `bulki-output` |
-| `--concurrency <n>` | | Parallel operations (1-32) | auto |
-| `--exclude <patterns...>` | | Directory names to skip | none |
-| `--dry-run` | | Preview without writing | `false` |
-| `--verbose` | | Per-file details | `false` |
+| `--format <fmt>` | `-f` | `jpeg`, `png`, `webp`, `gif`, `avif` | keep original |
+| `--resize <width>` | `-r` | Max width in pixels (never enlarges) | original |
+| `--concurrency <n>` | | Images processed in parallel (1-32) | CPU count (max 8) |
+| `--exclude <names...>` | | Folder names to skip | none |
+| `--dry-run` | | Show what would be written, without writing | `false` |
+| `--verbose` | | One line per file | `false` |
 | `--json` | | Machine-readable JSON output | `false` |
 | `--max-size <size>` | | Fail if output exceeds limit (e.g., `200kb`, `1mb`) | none |
+
+The path you want to optimize is the argument (`bulki compress <path>`); `-o` is only where the
+results go. Paths with spaces must be quoted (`"My Photos"`) or escaped (`My\ Photos`) — or just
+drag the folder into the terminal.
+
+> **Upgrading from 3.0?** `-d/--destination <dir>` and `--output-folder <name>` still work
+> (`-d x` → `x/bulki-output`, `-d x -o name` → `x/name`) but are deprecated in favor of `-o <dir>`.
+
+Behaviour worth knowing:
+- Previous `bulki-output` folders inside the source are skipped, so running twice doesn't nest outputs.
+- If re-encoding would make an image bigger, the original bytes are copied instead.
+- EXIF orientation is applied (phone photos won't come out sideways); transparent PNG → JPEG gets a white background.
+- `photo.jpg` and `photo.png` converted to WebP become `photo.webp` and `photo-png.webp` (nothing is silently overwritten).
+- HEIC/HEIF photos (iPhone) are converted on macOS.
+- A broken image doesn't stop the batch: it's reported at the end and the exit code is `1`.
 
 Output preserves your folder structure:
 
@@ -136,7 +161,9 @@ Monitor a directory. Every time a new image appears, bulki optimizes it automati
 bulki watch <directory> [options]
 ```
 
-Same options as compress: `--quality`, `--format`, `--resize`, `--destination`.
+Same options as compress: `--output`, `--quality`, `--format`, `--resize`. Files are processed once
+they stop changing (large copies aren't read half-written), and edits to an existing image are
+re-optimized.
 
 ### Examples
 
@@ -145,7 +172,7 @@ Same options as compress: `--quality`, `--format`, `--resize`, `--destination`.
 bulki watch ./uploads -f webp -q 80
 
 # Watch with resize, output to a different folder
-bulki watch ./photos -r 1920 -q 85 -d ./optimized
+bulki watch ./photos -r 1920 -q 85 -o ./optimized
 ```
 
 ### Use cases
