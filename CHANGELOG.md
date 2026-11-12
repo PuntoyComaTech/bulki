@@ -1,5 +1,13 @@
 # Changelog
 
+## [3.0.4](https://github.com/PuntoyComaTech/bulki/compare/bulki-v3.0.3...bulki-v3.0.4) (2026-11-12)
+
+
+### Bug Fixes
+
+* **deps:** update dependencies (0 vulnerabilities), CI on Linux/macOS/Windows ([1e40d80](https://github.com/PuntoyComaTech/bulki/commit/1e40d807dacc15e3c67abfaccbd141c82c0d7f03))
+* **deps:** update dependencies, CI on Linux/macOS/Windows ([4f8df6d](https://github.com/PuntoyComaTech/bulki/commit/4f8df6ddd87510eb09352c087dfa39fa05330357))
+
 ## [3.0.3](https://github.com/PuntoyComaTech/bulki/compare/bulki-v3.0.2...bulki-v3.0.3) (2026-11-12)
 
 
